@@ -2,3 +2,17 @@ librosa>=0.10.0
 numpy>=1.24.0
 matplotlib>=3.6.0
 scipy>=1.10.0
+music21>=7.0.0
+
+# ML dependencies
+torch>=2.0.0
+torchaudio>=2.0.0
+pandas>=2.0.0
+panns-inference>=0.1.0
+
+# Utilities
+yt-dlp>=2023.0.0
+soundfile>=0.12.0
+
+# Labeling UI
+gradio>=4.0.0

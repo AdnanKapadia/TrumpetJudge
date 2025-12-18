@@ -96,6 +96,8 @@ def run_sweep(
     n_trials: int = 30,
     epochs: int = 100,
     patience: int = 20,
+    device: str = "cpu",
+    seed: int = 42,
 ):
     """Run Optuna hyperparameter optimization."""
     
@@ -118,7 +120,7 @@ def run_sweep(
     print(f"Output: {sweep_dir}")
     
     # Create study with TPE sampler (Bayesian optimization)
-    sampler = TPESampler(seed=42)
+    sampler = TPESampler(seed=seed)
     study = optuna.create_study(
         direction="minimize",  # Minimize MAE
         sampler=sampler,
@@ -135,7 +137,9 @@ def run_sweep(
         epochs=epochs,
         patience=patience,
         output_dir=sweep_dir,
-    )
+        device=device,
+        seed=seed,
+        )
     
     # Run optimization
     study.optimize(objective, n_trials=n_trials, show_progress_bar=True)

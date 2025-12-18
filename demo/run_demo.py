@@ -9,11 +9,17 @@ Upload or record a trumpet performance and get instant AI feedback on:
 - Technique
 
 Usage:
-    python demo/run_demo.py
+    python demo/run_demo.py [--run RUN_NAME] [--share]
+    
+    Examples:
+        python demo/run_demo.py --run run_20251218_052428
+        python demo/run_demo.py --run run_20251218_052428 --share
+        TRUMPETJUDGE_RUN=run_20251218_052428 python demo/run_demo.py
 """
 
 import os
 import sys
+import argparse
 from pathlib import Path
 
 # Add project root to path
@@ -33,28 +39,46 @@ from models.head_regressor import RegressionHead, SCORE_NAMES, unscale_scores
 encoder = None
 head = None
 device = None
+selected_run = None  # Store the selected run name
 
 
-def load_models():
-    """Load encoder and regression head models."""
-    global encoder, head, device
+def load_models(run_name=None):
+    """Load encoder and regression head models.
+    
+    Args:
+        run_name: Name of the run to load (e.g., 'run_20251218_052428'). 
+                  If None, uses the latest run or the one specified via environment variable.
+    """
+    global encoder, head, device, selected_run
     
     if encoder is not None:
-        return True, "Models already loaded"
+        return True, f"Models already loaded from {selected_run}"
     
     try:
-        # Find latest checkpoint
         checkpoints_dir = Path(__file__).parent.parent / "checkpoints"
-        runs = sorted(checkpoints_dir.glob("run_*"))
         
-        if not runs:
-            return False, "No trained model found. Please train a model first with: python ml/train.py"
+        # Determine which run to use
+        if run_name is None:
+            # Check environment variable
+            run_name = os.environ.get("TRUMPETJUDGE_RUN", None)
         
-        latest_run = runs[-1]
-        checkpoint_path = latest_run / "best_model.pt"
+        if run_name:
+            # Use specified run
+            run_path = checkpoints_dir / run_name
+            if not run_path.exists():
+                return False, f"Run '{run_name}' not found in checkpoints directory"
+        else:
+            # Find latest checkpoint
+            runs = sorted(checkpoints_dir.glob("run_*"))
+            if not runs:
+                return False, "No trained model found. Please train a model first with: python ml/train.py"
+            run_path = runs[-1]
+            run_name = run_path.name
+        
+        checkpoint_path = run_path / "best_model.pt"
         
         if not checkpoint_path.exists():
-            return False, f"No best_model.pt found in {latest_run}"
+            return False, f"No best_model.pt found in {run_path}"
         
         # Load encoder
         encoder = PANNsEncoder(duration=20.0, device=None)
@@ -67,7 +91,8 @@ def load_models():
         head = head.to(device)
         head.eval()
         
-        return True, f"Models loaded from {latest_run.name}"
+        selected_run = run_name
+        return True, f"Models loaded from {run_name}"
     
     except Exception as e:
         return False, f"Error loading models: {str(e)}"
@@ -380,20 +405,34 @@ with gr.Blocks() as app:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="TrumpetJudge Demo App")
+    parser.add_argument(
+        "--run",
+        type=str,
+        default=None,
+        help="Name of the run to use (e.g., 'run_20251218_052428'). If not specified, uses latest run or TRUMPETJUDGE_RUN env var."
+    )
+    parser.add_argument(
+        "--share",
+        action="store_true",
+        help="Create a public share link"
+    )
+    args = parser.parse_args()
+    
     print("=" * 60)
     print("🎺 TrumpetJudge Demo")
     print("=" * 60)
     
     # Pre-load models
     print("\nLoading models...")
-    success, message = load_models()
+    success, message = load_models(run_name=args.run)
     print(f"  {message}")
     
     if success:
         print("\n✓ Ready! Launching app...")
-        app.launch(share=True)
+        app.launch(share=args.share)
     else:
         print(f"\n⚠️ {message}")
         print("Launching app anyway (will show error to users)...")
-        app.launch(share=True)
+        app.launch(share=args.share)
 

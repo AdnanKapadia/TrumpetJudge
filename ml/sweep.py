@@ -32,6 +32,8 @@ def create_objective(
     epochs: int,
     patience: int,
     output_dir: Path,
+    device: str,
+    seed: int,
 ):
     """Create an objective function for Optuna."""
     
@@ -62,8 +64,8 @@ def create_objective(
                 patience=patience,
                 aug_embeddings=aug_embeddings,
                 aug_csv=aug_csv,
-                seed = 42,
-                device = "cpu",
+                seed = seed,
+                device = device,
             )
             
             mean_mae = summary["mean_mae"]

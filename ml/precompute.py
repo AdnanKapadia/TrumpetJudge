@@ -5,16 +5,18 @@ Extracts embeddings from all audio files once and saves them to disk.
 This allows training the MLP head without running PANNs every epoch.
 
 Usage:
-    # Precompute for train, val, and augmented train
+    # Precompute for train, val, and augmented train (with labels)
     python ml/precompute.py --csv data/prepared/train.csv --output data/embeddings/train.pt
     python ml/precompute.py --csv data/prepared/val.csv --output data/embeddings/val.pt
-    python ml/precompute.py --csv data/prepared/train_augmented.csv --output data/embeddings/train_augmented.pt
 
     # Or use the convenience command to do all at once:
     python ml/precompute.py --all
 
+    # Precompute ALL audio without labels (for future labeling):
+    python ml/precompute.py --csv data/to_label.csv --output data/embeddings/all_audio.pt --no_labels
+
 Output:
-    - .pt files containing {embeddings, labels, ids} tensors
+    - .pt files containing {embeddings, ids, paths} (and labels if not --no_labels)
 """
 
 import os
@@ -31,6 +33,143 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models.encoder_panns import PANNsEncoder
 from models.head_regressor import SCORE_NAMES, scale_scores
+
+
+class AudioOnlyDataset(torch.utils.data.Dataset):
+    """Simple dataset that loads audio without requiring labels."""
+    
+    SAMPLE_RATE = 32000
+    
+    def __init__(self, df: pd.DataFrame, duration: float = 20.0):
+        self.df = df
+        self.duration = duration
+        self.num_samples = int(self.SAMPLE_RATE * duration)
+    
+    def __len__(self):
+        return len(self.df)
+    
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+        path = row["path"]
+        
+        # Handle path - add data/ prefix if needed
+        if not os.path.exists(path) and os.path.exists(f"data/{path}"):
+            path = f"data/{path}"
+        
+        # Load audio
+        import soundfile as sf
+        waveform, sr = sf.read(path, dtype='float32')
+        waveform = torch.from_numpy(waveform)
+        
+        # Convert to mono if stereo
+        if waveform.dim() > 1:
+            waveform = waveform.mean(dim=-1)
+        
+        # Resample if needed
+        if sr != self.SAMPLE_RATE:
+            import torchaudio
+            waveform = torchaudio.functional.resample(waveform, sr, self.SAMPLE_RATE)
+        
+        # Pad or trim to fixed length
+        if waveform.shape[0] < self.num_samples:
+            waveform = torch.nn.functional.pad(waveform, (0, self.num_samples - waveform.shape[0]))
+        else:
+            waveform = waveform[:self.num_samples]
+        
+        return waveform
+
+
+def precompute_embeddings_no_labels(
+    csv_path: str,
+    output_path: str,
+    duration: float = 20.0,
+    batch_size: int = 8,
+    device: str = None,
+):
+    """
+    Precompute embeddings for audio files WITHOUT requiring labels.
+    
+    Use this to pre-encode all audio, then match with labels at training time.
+    
+    Args:
+        csv_path: Path to CSV with at least 'id' and 'path' columns
+        output_path: Path to save embeddings (.pt file)
+        duration: Audio duration in seconds
+        batch_size: Batch size for processing
+        device: Device to use (None for auto-detect)
+    
+    Saves a dict with:
+        - embeddings: Tensor of shape (N, 2048)
+        - ids: List of sample IDs (for matching with labels later)
+        - paths: List of audio paths
+        - has_labels: False
+    """
+    # Load CSV
+    df = pd.read_csv(csv_path)
+    print(f"Loading {len(df)} audio files from {csv_path}")
+    
+    # Validate required columns
+    if "id" not in df.columns or "path" not in df.columns:
+        raise ValueError("CSV must have 'id' and 'path' columns")
+    
+    # Initialize encoder
+    print("\nInitializing PANNs encoder...")
+    encoder = PANNsEncoder(duration=duration, device=device)
+    device = encoder.device
+    print(f"  Device: {device}")
+    
+    # Create audio-only dataset
+    dataset = AudioOnlyDataset(df, duration=duration)
+    
+    from torch.utils.data import DataLoader
+    loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,  # Keep order for ID matching
+        num_workers=4,
+        pin_memory=True,
+    )
+    
+    # Extract embeddings
+    all_embeddings = []
+    
+    print(f"\nExtracting embeddings (no labels)...")
+    with torch.no_grad():
+        for waveforms in tqdm(loader, desc="Processing"):
+            waveforms = waveforms.to(device)
+            embeddings = encoder(waveforms)
+            all_embeddings.append(embeddings.cpu())
+    
+    # Concatenate
+    all_embeddings = torch.cat(all_embeddings, dim=0)
+    
+    # Get IDs and paths
+    ids = df["id"].tolist()
+    paths = df["path"].tolist()
+    
+    # Create output dict (NO labels)
+    output = {
+        "embeddings": all_embeddings,
+        "ids": ids,
+        "paths": paths,
+        "duration": duration,
+        "embedding_dim": all_embeddings.shape[1],
+        "num_samples": len(df),
+        "has_labels": False,  # Flag to indicate no labels
+    }
+    
+    # Save
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(output, output_path)
+    
+    print(f"\n✅ Saved embeddings to {output_path}")
+    print(f"   Samples: {len(df)}")
+    print(f"   Embedding shape: {all_embeddings.shape}")
+    print(f"   File size: {output_path.stat().st_size / 1e6:.1f} MB")
+    print(f"   Labels: None (use --labels at training time)")
+    
+    return output
 
 
 def precompute_embeddings(
@@ -236,6 +375,8 @@ def main():
                         help="Batch size for processing")
     parser.add_argument("--device", type=str, default=None,
                         help="Device (cuda/cpu)")
+    parser.add_argument("--no_labels", action="store_true",
+                        help="Encode audio without labels (for pre-encoding all audio)")
     
     args = parser.parse_args()
     
@@ -252,18 +393,30 @@ def main():
             stem = Path(args.csv).stem
             args.output = f"data/embeddings/{stem}.pt"
         
-        precompute_embeddings(
-            csv_path=args.csv,
-            output_path=args.output,
-            duration=args.duration,
-            batch_size=args.batch_size,
-            device=args.device,
-        )
+        if args.no_labels:
+            # Encode without labels
+            precompute_embeddings_no_labels(
+                csv_path=args.csv,
+                output_path=args.output,
+                duration=args.duration,
+                batch_size=args.batch_size,
+                device=args.device,
+            )
+        else:
+            # Encode with labels
+            precompute_embeddings(
+                csv_path=args.csv,
+                output_path=args.output,
+                duration=args.duration,
+                batch_size=args.batch_size,
+                device=args.device,
+            )
     else:
         parser.print_help()
         print("\nExamples:")
         print("  python ml/precompute.py --all")
         print("  python ml/precompute.py --csv data/prepared/train.csv --output data/embeddings/train.pt")
+        print("  python ml/precompute.py --csv data/to_label.csv --output data/embeddings/all_audio.pt --no_labels")
 
 
 if __name__ == "__main__":

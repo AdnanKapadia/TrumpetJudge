@@ -241,7 +241,7 @@ def train(
     print(f"  Data loading workers: {num_workers}")
     
     # Setup training
-    criterion = nn.MSELoss()
+    criterion = nn.HuberLoss(delta=1.0)  # More robust to outliers than MSE
     optimizer = Adam(head.parameters(), lr=learning_rate)
     scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
     
@@ -440,7 +440,7 @@ def train_cv(
         head = head.to(device)
         
         # Setup training
-        criterion = nn.MSELoss()
+        criterion = nn.HuberLoss(delta=1.0)  # More robust to outliers than MSE
         optimizer = Adam(head.parameters(), lr=learning_rate)
         scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
         
@@ -823,7 +823,7 @@ def train_gated(
     
     # Setup training
     gating_criterion = nn.BCELoss()
-    regression_criterion = nn.MSELoss()
+    regression_criterion = nn.HuberLoss(delta=1.0)  # More robust to outliers than MSE
     
     # Combined optimizer for both heads
     all_params = list(gating_head.parameters()) + list(regression_head.parameters())

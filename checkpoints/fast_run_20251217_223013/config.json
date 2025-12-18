@@ -1,0 +1,21 @@
+{
+  "train_files": [
+    "data/embeddings/train.pt",
+    "data/embeddings/train_augmented.pt"
+  ],
+  "val_files": [
+    "data/embeddings/val.pt"
+  ],
+  "embedding_dim": 2048,
+  "batch_size": 64,
+  "learning_rate": 0.001,
+  "epochs": 200,
+  "patience": 20,
+  "seed": 42,
+  "hybrid": false,
+  "aug_per_original": null,
+  "best_epoch": 5,
+  "best_val_mae": 0.8786056518554688,
+  "train_samples": 1170,
+  "val_samples": 49
+}

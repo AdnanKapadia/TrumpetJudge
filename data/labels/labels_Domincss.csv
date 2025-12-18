@@ -1,0 +1,13 @@
+sample_id,user_id,overall,intonation,tone,timing,technique,rejected,timestamp
+a9a9082e_5,Domincss,5,4,5,5,5,False,2025-12-10T14:27:04.603271
+7728d41e_4,Domincss,2,4,4,3,1,False,2025-12-10T14:29:25.253244
+4ca22ca1_17,Domincss,4,3,4,3,4,False,2025-12-10T14:33:20.454813
+aecb3945_21,Domincss,4,5,5,4,4,False,2025-12-10T14:34:33.382556
+61f0dbb1_1,Domincss,3,4,4,4,3,False,2025-12-10T14:36:37.010845
+bcc0a66c_2,Domincss,2,2,4,1,1,False,2025-12-10T14:37:51.557157
+7728d41e_0,Domincss,4,4,4,4,3,False,2025-12-10T14:39:37.047120
+c734fdb8_33,Domincss,,,,,,True,2025-12-10T14:40:50.244806
+1c10e3b7_13,Domincss,3,4,3,2,2,False,2025-12-10T14:42:50.873220
+3ea977b6_3,Domincss,2,4,4,2,2,False,2025-12-10T14:43:27.410594
+7728d41e_22,Domincss,,,,,,True,2025-12-10T14:43:34.018487
+5d37668b_4,Domincss,,,,,,True,2025-12-10T14:44:09.438004

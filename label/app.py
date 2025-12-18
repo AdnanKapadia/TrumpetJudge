@@ -9,6 +9,7 @@ Each clip can also be rejected if it's not suitable for labeling.
 import gradio as gr
 import pandas as pd
 import random
+import argparse
 from datetime import datetime
 from pathlib import Path
 
@@ -25,6 +26,10 @@ LABELS_DIR.mkdir(exist_ok=True)
 # Score categories
 SCORE_CATEGORIES = ["overall", "intonation", "tone", "timing", "technique"]
 
+# Global ordering preference (set via command-line argument)
+# This will be set in the if __name__ == "__main__" block
+ORDERING_MODE = "random"  # "random" or "recents_first"
+
 
 class LabelingSession:
     """Manages a labeling session for a user."""
@@ -38,8 +43,13 @@ class LabelingSession:
         self.labeled_count = 0
         self.total_count = 0
         
-    def start_session(self, user_id: str) -> tuple:
-        """Initialize a new labeling session."""
+    def start_session(self, user_id: str, ordering_mode: str = "random") -> tuple:
+        """Initialize a new labeling session.
+        
+        Args:
+            user_id: User identifier
+            ordering_mode: "random" for random order, "recents_first" for most recent items first
+        """
         if not user_id or not user_id.strip():
             return None, "Please enter a valid User ID"
         
@@ -58,9 +68,19 @@ class LabelingSession:
             already_labeled = set(existing_df["sample_id"].tolist())
             self.labeled_count = len(already_labeled)
         
-        # Get remaining samples (randomized)
-        self.remaining_ids = list(all_ids - already_labeled)
-        random.shuffle(self.remaining_ids)
+        # Get remaining samples
+        remaining_ids_set = all_ids - already_labeled
+        
+        if ordering_mode == "recents_first":
+            # Preserve original CSV order, filter out labeled items, then reverse
+            # (so last items in CSV come first)
+            all_ids_ordered = self.samples_df["id"].tolist()
+            self.remaining_ids = [id for id in all_ids_ordered if id in remaining_ids_set]
+            self.remaining_ids.reverse()  # Most recent (last in CSV) first
+        else:
+            # Random order (default)
+            self.remaining_ids = list(remaining_ids_set)
+            random.shuffle(self.remaining_ids)
         
         remaining = len(self.remaining_ids)
         
@@ -272,7 +292,7 @@ with gr.Blocks(title="🎺 Trumpet Judge - Labeling Tool") as app:
     
     # Start labeling handler
     def start_labeling(user_id):
-        success, message = session.start_session(user_id)
+        success, message = session.start_session(user_id, ordering_mode=ORDERING_MODE)
         
         if not success:
             return [
@@ -438,4 +458,20 @@ with gr.Blocks(title="🎺 Trumpet Judge - Labeling Tool") as app:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Trumpet Performance Labeling UI")
+    parser.add_argument(
+        "--recents-first",
+        action="store_true",
+        help="Order samples with most recent items first (instead of random order)"
+    )
+    args = parser.parse_args()
+    
+    # Set ordering mode
+    if args.recents_first:
+        ORDERING_MODE = "recents_first"
+        print("📋 Ordering mode: Recents first")
+    else:
+        ORDERING_MODE = "random"
+        print("📋 Ordering mode: Random")
+    
     app.launch(share=True)  # Creates a public URL for remote labelers

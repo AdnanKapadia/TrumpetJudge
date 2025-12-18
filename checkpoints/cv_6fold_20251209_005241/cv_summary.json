@@ -1,0 +1,122 @@
+{
+  "n_folds": 6,
+  "data_csv": "data/prepared/all_data.csv",
+  "total_samples": 146,
+  "mean_mae": 0.9142613093058268,
+  "std_mae": 0.05833474128013983,
+  "fold_maes": [
+    0.8840745687484741,
+    0.9987884640693665,
+    0.8590573072433472,
+    0.8997605204582214,
+    0.8549144506454468,
+    0.988972544670105
+  ],
+  "mean_mae_per_score": {
+    "overall": 0.8897386491298676,
+    "intonation": 0.9088944892088572,
+    "tone": 0.9140960872173309,
+    "timing": 0.8641681373119354,
+    "technique": 0.994409183661143
+  },
+  "std_mae_per_score": {
+    "overall": 0.08069370377293476,
+    "intonation": 0.07174752066859758,
+    "tone": 0.10366447641004789,
+    "timing": 0.11235876714938976,
+    "technique": 0.08516152090551841
+  },
+  "config": {
+    "duration": 20.0,
+    "batch_size": 8,
+    "learning_rate": 0.001,
+    "epochs": 50,
+    "patience": 10
+  },
+  "fold_details": [
+    {
+      "fold": 1,
+      "best_epoch": 18,
+      "best_val_mae": 0.8840745687484741,
+      "mae_per_score": {
+        "overall": 0.9175387620925903,
+        "intonation": 0.7760671973228455,
+        "tone": 0.8876378536224365,
+        "timing": 0.908968448638916,
+        "technique": 0.9301605820655823
+      },
+      "train_size": 121,
+      "val_size": 25
+    },
+    {
+      "fold": 2,
+      "best_epoch": 35,
+      "best_val_mae": 0.9987884640693665,
+      "mae_per_score": {
+        "overall": 1.0480400323867798,
+        "intonation": 0.9140148162841797,
+        "tone": 1.135201334953308,
+        "timing": 0.8668908476829529,
+        "technique": 1.0297952890396118
+      },
+      "train_size": 121,
+      "val_size": 25
+    },
+    {
+      "fold": 3,
+      "best_epoch": 9,
+      "best_val_mae": 0.8590573072433472,
+      "mae_per_score": {
+        "overall": 0.8705866932868958,
+        "intonation": 0.9101996421813965,
+        "tone": 0.9101062417030334,
+        "timing": 0.6528609395027161,
+        "technique": 0.9515330195426941
+      },
+      "train_size": 122,
+      "val_size": 24
+    },
+    {
+      "fold": 4,
+      "best_epoch": 6,
+      "best_val_mae": 0.8997605204582214,
+      "mae_per_score": {
+        "overall": 0.8139379024505615,
+        "intonation": 0.9666567444801331,
+        "tone": 0.8080403804779053,
+        "timing": 0.9005825519561768,
+        "technique": 1.0095850229263306
+      },
+      "train_size": 122,
+      "val_size": 24
+    },
+    {
+      "fold": 5,
+      "best_epoch": 18,
+      "best_val_mae": 0.8549144506454468,
+      "mae_per_score": {
+        "overall": 0.8056281208992004,
+        "intonation": 0.8818829655647278,
+        "tone": 0.8668995499610901,
+        "timing": 0.828746497631073,
+        "technique": 0.8914151191711426
+      },
+      "train_size": 122,
+      "val_size": 24
+    },
+    {
+      "fold": 6,
+      "best_epoch": 8,
+      "best_val_mae": 0.988972544670105,
+      "mae_per_score": {
+        "overall": 0.8827003836631775,
+        "intonation": 1.0045455694198608,
+        "tone": 0.8766911625862122,
+        "timing": 1.0269595384597778,
+        "technique": 1.1539660692214966
+      },
+      "train_size": 122,
+      "val_size": 24
+    }
+  ]
+}

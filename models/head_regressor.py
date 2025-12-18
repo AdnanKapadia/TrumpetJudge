@@ -25,6 +25,89 @@ SCORE_MIN = 1
 SCORE_MAX = 5
 
 
+class GatingHead(nn.Module):
+    """
+    Binary classification head that predicts whether audio is valid trumpet.
+    
+    Used as a "gate" before the regression head - if the audio is not valid
+    (talking, non-trumpet, silence, bad quality), the regression scores 
+    should not be trusted.
+    
+    Architecture:
+        Linear(embedding_dim → 128) → ReLU → Dropout
+        Linear(128 → 32) → ReLU → Dropout  
+        Linear(32 → 1) → Sigmoid
+    
+    Output: probability that the audio is valid trumpet (0-1)
+    """
+    
+    def __init__(
+        self,
+        embedding_dim: int = 2048,
+        hidden_dim: int = 128,
+        dropout: float = 0.3,
+    ):
+        """
+        Initialize the gating head.
+        
+        Args:
+            embedding_dim: Dimension of input embeddings (2048 for PANNs CNN14)
+            hidden_dim: Dimension of first hidden layer
+            dropout: Dropout probability for regularization
+        """
+        super().__init__()
+        
+        self.embedding_dim = embedding_dim
+        
+        self.network = nn.Sequential(
+            nn.Linear(embedding_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            
+            nn.Linear(hidden_dim, 32),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            
+            nn.Linear(32, 1),
+            nn.Sigmoid(),
+        )
+        
+        self._init_weights()
+    
+    def _init_weights(self):
+        """Initialize network weights using Xavier initialization."""
+        for module in self.network:
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                nn.init.zeros_(module.bias)
+    
+    def forward(self, embedding: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass: embedding → validity probability.
+        
+        Args:
+            embedding: Audio embedding tensor of shape (batch, embedding_dim)
+            
+        Returns:
+            Validity probability tensor of shape (batch, 1) with values in [0, 1]
+        """
+        return self.network(embedding)
+    
+    def predict(self, embedding: torch.Tensor, threshold: float = 0.5) -> torch.Tensor:
+        """
+        Predict binary validity labels.
+        
+        Args:
+            embedding: Audio embedding tensor of shape (batch, embedding_dim)
+            threshold: Classification threshold (default 0.5)
+            
+        Returns:
+            Binary tensor of shape (batch,) with 1=valid, 0=invalid
+        """
+        probs = self.forward(embedding).squeeze(-1)
+        return (probs >= threshold).long()
+
+
 class RegressionHead(nn.Module):
     """
     MLP regression head that maps audio embeddings to performance scores.
@@ -94,7 +177,7 @@ class RegressionHead(nn.Module):
             
         Returns:
             Scores tensor of shape (batch, 5) with values in [0, 1]
-            Use unscale_scores() to convert to [1, 10] range.
+            Use unscale_scores() to convert to [1, 5] range.
         """
         return self.network(embedding)
     
@@ -140,7 +223,7 @@ def scale_scores(scores: torch.Tensor) -> torch.Tensor:
     Scale scores from [1, 5] to [0, 1] for training.
     
     Args:
-        scores: Tensor with values in [1, 10]
+        scores: Tensor with values in [1, 5]
         
     Returns:
         Tensor with values in [0, 1]
@@ -156,9 +239,39 @@ def unscale_scores(scores: torch.Tensor) -> torch.Tensor:
         scores: Tensor with values in [0, 1]
         
     Returns:
-        Tensor with values in [1, 10]
+        Tensor with values in [1, 5]
     """
     return scores * (SCORE_MAX - SCORE_MIN) + SCORE_MIN
+
+
+def test_gating_head():
+    """Quick test to verify gating head works."""
+    print("Initializing gating head...")
+    head = GatingHead(embedding_dim=2048)
+    
+    print(f"  Input dim: {head.embedding_dim}")
+    print(f"  Output: is_valid (0-1 probability)")
+    
+    # Count parameters
+    num_params = sum(p.numel() for p in head.parameters())
+    print(f"  Trainable parameters: {num_params:,}")
+    
+    # Test forward pass
+    print("\nTesting forward pass...")
+    dummy_embedding = torch.randn(4, 2048)  # Batch of 4
+    
+    # Raw output (probability)
+    probs = head(dummy_embedding)
+    print(f"  Input shape: {dummy_embedding.shape}")
+    print(f"  Output shape: {probs.shape}")
+    print(f"  Probability range: [{probs.min():.3f}, {probs.max():.3f}]")
+    
+    # Binary predictions
+    preds = head.predict(dummy_embedding)
+    print(f"  Binary predictions: {preds.tolist()}")
+    
+    print("\n✓ Gating head test passed!")
+    return head
 
 
 def test_head():

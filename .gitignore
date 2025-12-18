@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+.eggs/
+*.egg-info/
+*.egg
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Gradio cache
+.gradio/
+flagged/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large model files (PANNs encoder weights)
+*.pth
+*.onnx
+
+# Keep checkpoints/ - contains trained regression head (~1MB, needed for demo)
+
+# Training audio (too large for git - users provide their own)
+data/audio/
+
+# Note: data/check_audio/ is NOT ignored - contains test files for demo
+
+# Generated data
+data/plots/
+data/sheet_music/
+# data/prepared/
+
+# Labels (keep structure, ignore actual label files)
+# data/labels/*.csv
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+

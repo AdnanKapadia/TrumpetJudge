@@ -39,7 +39,7 @@ def create_objective(
     
     def objective(trial: optuna.Trial) -> float:
         # Sample hyperparameters
-        lr = trial.suggest_float("lr", 1e-6, 1e-2, log=True)
+        lr = trial.suggest_float("lr", 1e-4, 5e-2, log=True)
         batch_size = trial.suggest_categorical("batch_size", [16, 24, 32, 48, 64, 96, 128])
         dropout = trial.suggest_float("dropout", 0.1, 0.6)
         weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)

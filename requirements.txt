@@ -9,6 +9,8 @@ torch>=2.0.0
 torchaudio>=2.0.0
 pandas>=2.0.0
 panns-inference>=0.1.0
+scikit-learn>=1.3.0
+optuna>=3.0.0
 
 # Utilities
 yt-dlp>=2023.0.0

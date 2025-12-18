@@ -4,7 +4,7 @@ Fast Training on Precomputed Embeddings for TrumpetJudge.
 Trains the regression head on precomputed PANNs embeddings.
 This is ~10-15x faster than train.py since we skip the encoder.
 
-MODE 1: Embeddings with baked-in labels
+MODE 1: Embeddings with baked-in labels (legacy)
     python ml/train_fast.py --train data/embeddings/train.pt --val data/embeddings/val.pt
 
 MODE 2: Pre-encoded audio + separate label CSVs
@@ -13,15 +13,32 @@ MODE 2: Pre-encoded audio + separate label CSVs
         --train_csv data/prepared/train.csv \
         --val_csv data/prepared/val.csv
 
+MODE 2b: With augmented data (recommended for better accuracy!)
+    python ml/train_fast.py \
+        --embeddings data/embeddings/all_audio.pt \
+        --train_csv data/prepared/train.csv \
+        --val_csv data/prepared/val.csv \
+        --aug_embeddings data/embeddings/all_augmented.pt \
+        --aug_csv data/all_augmented.csv
+
 MODE 3: K-fold cross-validation (recommended for reliable metrics)
     python ml/train_fast.py --cv \
         --embeddings data/embeddings/all_audio.pt \
         --labels_csv data/prepared/all_data.csv \
         --n_folds 6
 
+MODE 3b: K-fold CV with augmented data (best accuracy!)
+    python ml/train_fast.py --cv \
+        --embeddings data/embeddings/all_audio.pt \
+        --labels_csv data/prepared/all_data.csv \
+        --n_folds 6 \
+        --aug_embeddings data/embeddings/all_augmented.pt \
+        --aug_csv data/prepared/all_augmented.csv
+
 Prerequisites:
     - Run precompute.py to create embedding files
     - For Mode 2/3: Run precompute.py --no_labels, then prepare_data.py
+    - For augmentation: Run augment_offline.py, then precompute.py on augmented CSV
 """
 
 import os
@@ -156,6 +173,120 @@ class LabeledEmbeddingDataset(Dataset):
     
     def __getitem__(self, idx):
         return self.embeddings[idx], self.labels[idx]
+
+
+class AugmentedLabeledEmbeddingDataset(Dataset):
+    """
+    Dataset for augmented embeddings that inherits labels from original samples.
+    
+    Uses the augmented CSV's `original_id` column to look up labels from the labels CSV.
+    This allows training on augmented data without duplicating labels.
+    """
+    
+    def __init__(self, aug_embeddings_file: str, aug_csv: str, labels_csv: str):
+        """
+        Args:
+            aug_embeddings_file: Path to .pt file with augmented embeddings
+            aug_csv: Path to CSV mapping augmented IDs to original_id
+            labels_csv: Path to CSV with labels for original samples
+        """
+        import pandas as pd
+        from models.head_regressor import SCORE_NAMES, scale_scores
+        
+        # Load augmented embeddings
+        print(f"Loading augmented embeddings from {aug_embeddings_file}...")
+        emb_data = torch.load(aug_embeddings_file, map_location="cpu", weights_only=False)
+        aug_emb_ids = emb_data["ids"]
+        all_aug_embeddings = emb_data["embeddings"]
+        aug_id_to_idx = {id_: idx for idx, id_ in enumerate(aug_emb_ids)}
+        print(f"  {len(aug_emb_ids)} augmented embeddings loaded")
+        
+        # Load augmented CSV (has original_id mapping)
+        print(f"Loading augmented CSV from {aug_csv}...")
+        aug_df = pd.read_csv(aug_csv)
+        print(f"  {len(aug_df)} augmented samples in CSV")
+        
+        # Load labels CSV
+        print(f"Loading labels from {labels_csv}...")
+        labels_df = pd.read_csv(labels_csv)
+        
+        # Create original_id -> labels mapping
+        original_to_labels = {}
+        for _, row in labels_df.iterrows():
+            orig_id = row["id"]
+            scores = torch.tensor([row[col] for col in SCORE_NAMES], dtype=torch.float32)
+            scores = scale_scores(scores)  # Scale to [0, 1]
+            original_to_labels[orig_id] = scores
+        print(f"  {len(original_to_labels)} labeled original samples")
+        
+        # Match augmented embeddings with labels via original_id
+        matched_embeddings = []
+        matched_labels = []
+        matched_ids = []
+        missing_emb = 0
+        missing_label = 0
+        
+        for _, row in aug_df.iterrows():
+            aug_id = row["id"]
+            original_id = row["original_id"]
+            
+            # Check if we have the embedding
+            if aug_id not in aug_id_to_idx:
+                missing_emb += 1
+                continue
+                
+            # Check if we have labels for the original
+            if original_id not in original_to_labels:
+                missing_label += 1
+                continue
+            
+            idx = aug_id_to_idx[aug_id]
+            matched_embeddings.append(all_aug_embeddings[idx])
+            matched_labels.append(original_to_labels[original_id])
+            matched_ids.append(aug_id)
+        
+        if missing_emb > 0:
+            print(f"  Warning: {missing_emb} augmented samples not found in embeddings")
+        if missing_label > 0:
+            print(f"  Note: {missing_label} augmented samples skipped (original not labeled)")
+        
+        if len(matched_embeddings) == 0:
+            raise ValueError("No augmented samples matched! Check your files.")
+        
+        self.embeddings = torch.stack(matched_embeddings)
+        self.labels = torch.stack(matched_labels)
+        self.ids = matched_ids
+        
+        print(f"  ✓ Matched {len(self.embeddings)} augmented samples with labels")
+    
+    def __len__(self):
+        return len(self.embeddings)
+    
+    def __getitem__(self, idx):
+        return self.embeddings[idx], self.labels[idx]
+
+
+class CombinedDataset(Dataset):
+    """Combines multiple datasets into one."""
+    
+    def __init__(self, datasets: list):
+        self.datasets = datasets
+        self.lengths = [len(d) for d in datasets]
+        self.cumulative = []
+        total = 0
+        for l in self.lengths:
+            self.cumulative.append(total)
+            total += l
+        self.total_len = total
+    
+    def __len__(self):
+        return self.total_len
+    
+    def __getitem__(self, idx):
+        for i, (cum, length) in enumerate(zip(self.cumulative, self.lengths)):
+            if idx < cum + length:
+                return self.datasets[i][idx - cum]
+        raise IndexError(f"Index {idx} out of range")
 
 
 class HybridEmbeddingDataset(Dataset):
@@ -505,11 +636,14 @@ def train_from_csv(
     patience: int = 15,
     device: str = None,
     seed: int = 42,
+    aug_embeddings: str = None,
+    aug_csv: str = None,
 ):
     """
     Train using precomputed embeddings + separate label CSVs.
     
     This allows pre-encoding all audio once, then training with different label sets.
+    Optionally include augmented embeddings for more training data.
     
     Args:
         embeddings_file: Path to .pt file with all precomputed embeddings
@@ -523,6 +657,8 @@ def train_from_csv(
         patience: Early stopping patience
         device: Device to use
         seed: Random seed
+        aug_embeddings: Path to augmented embeddings .pt file (optional)
+        aug_csv: Path to augmented CSV with original_id mapping (optional)
     """
     # Set seed
     set_seed(seed)
@@ -545,9 +681,22 @@ def train_from_csv(
     print(f"\n  Device: {device}")
     
     # Load datasets using LabeledEmbeddingDataset
-    print("\nLoading embeddings and matching with labels...")
-    train_dataset = LabeledEmbeddingDataset(embeddings_file, train_csv)
+    print("\nLoading original embeddings and matching with labels...")
+    orig_train_dataset = LabeledEmbeddingDataset(embeddings_file, train_csv)
     val_dataset = LabeledEmbeddingDataset(embeddings_file, val_csv)
+    
+    # Optionally load augmented embeddings
+    train_dataset = orig_train_dataset
+    if aug_embeddings and aug_csv:
+        print("\nLoading augmented embeddings...")
+        aug_train_dataset = AugmentedLabeledEmbeddingDataset(
+            aug_embeddings_file=aug_embeddings,
+            aug_csv=aug_csv,
+            labels_csv=train_csv,  # Use training labels to filter
+        )
+        # Combine original + augmented for training
+        train_dataset = CombinedDataset([orig_train_dataset, aug_train_dataset])
+        print(f"\n  Combined training: {len(orig_train_dataset)} original + {len(aug_train_dataset)} augmented = {len(train_dataset)} total")
     
     train_loader = DataLoader(
         train_dataset,
@@ -652,6 +801,8 @@ def train_from_csv(
         "embeddings_file": embeddings_file,
         "train_csv": train_csv,
         "val_csv": val_csv,
+        "aug_embeddings": aug_embeddings,
+        "aug_csv": aug_csv,
         "embedding_dim": embedding_dim,
         "batch_size": batch_size,
         "learning_rate": learning_rate,
@@ -683,17 +834,24 @@ def train_cv(
     patience: int = 15,
     device: str = None,
     seed: int = 42,
+    aug_embeddings: str = None,
+    aug_csv: str = None,
+    dropout: float = 0.3,
+    weight_decay: float = 0.0,
 ):
     """
     K-fold cross-validation on precomputed embeddings.
     
     Splits data by video_id to prevent data leakage between folds.
+    Optionally includes augmented data for training (not validation).
     
     Args:
         embeddings_file: Path to .pt file with all precomputed embeddings
         labels_csv: Path to CSV with all labels (e.g., all_data.csv)
         n_folds: Number of folds (default: 6)
         output_dir: Directory to save checkpoints
+        aug_embeddings: Path to augmented embeddings .pt file (optional)
+        aug_csv: Path to augmented CSV with original_id mapping (optional)
         ... (other args same as train_from_csv)
     """
     import pandas as pd
@@ -720,18 +878,40 @@ def train_cv(
         device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"\n  Device: {device}")
     
-    # Load embeddings
+    # Load original embeddings
     print(f"\nLoading embeddings from {embeddings_file}...")
     emb_data = torch.load(embeddings_file, map_location="cpu", weights_only=False)
     emb_ids = emb_data["ids"]
     all_embeddings = emb_data["embeddings"]
     id_to_idx = {id_: idx for idx, id_ in enumerate(emb_ids)}
-    print(f"  {len(emb_ids)} embeddings loaded")
+    print(f"  {len(emb_ids)} original embeddings loaded")
+    
+    # Load augmented embeddings if provided
+    aug_emb_data = None
+    aug_df = None
+    aug_id_to_idx = None
+    if aug_embeddings and aug_csv:
+        print(f"\nLoading augmented embeddings from {aug_embeddings}...")
+        aug_emb_data = torch.load(aug_embeddings, map_location="cpu", weights_only=False)
+        aug_id_to_idx = {id_: idx for idx, id_ in enumerate(aug_emb_data["ids"])}
+        print(f"  {len(aug_emb_data['ids'])} augmented embeddings loaded")
+        
+        print(f"Loading augmented CSV from {aug_csv}...")
+        aug_df = pd.read_csv(aug_csv)
+        print(f"  {len(aug_df)} augmented samples in CSV")
     
     # Load labels
     print(f"\nLoading labels from {labels_csv}...")
     labels_df = pd.read_csv(labels_csv)
     print(f"  {len(labels_df)} labeled samples")
+    
+    # Create id -> labels mapping for quick lookup
+    id_to_labels = {}
+    for _, row in labels_df.iterrows():
+        sample_id = row["id"]
+        scores = torch.tensor([row[col] for col in SCORE_NAMES], dtype=torch.float32)
+        scores = scale_scores(scores)
+        id_to_labels[sample_id] = scores
     
     # Extract video_id from sample id (e.g., "abc123_0" -> "abc123")
     labels_df["video_id"] = labels_df["id"].apply(lambda x: x.rsplit("_", 1)[0] if "_" in str(x) else str(x))
@@ -764,11 +944,14 @@ def train_cv(
         train_df = labels_df[labels_df["video_id"].isin(train_videos)]
         val_df = labels_df[labels_df["video_id"].isin(val_videos)]
         
-        print(f"  Train: {len(train_df)} samples ({len(train_videos)} videos)")
+        # Get train sample IDs for augmentation filtering
+        train_sample_ids = set(train_df["id"].tolist())
+        
+        print(f"  Train: {len(train_df)} original samples ({len(train_videos)} videos)")
         print(f"  Val: {len(val_df)} samples ({len(val_videos)} videos)")
         
         # Build datasets for this fold
-        def build_dataset(df):
+        def build_orig_dataset(df):
             embeddings_list = []
             labels_list = []
             for _, row in df.iterrows():
@@ -776,13 +959,35 @@ def train_cv(
                 if sample_id in id_to_idx:
                     idx = id_to_idx[sample_id]
                     embeddings_list.append(all_embeddings[idx])
-                    scores = torch.tensor([row[col] for col in SCORE_NAMES], dtype=torch.float32)
-                    scores = scale_scores(scores)
-                    labels_list.append(scores)
+                    labels_list.append(id_to_labels[sample_id])
             return torch.stack(embeddings_list), torch.stack(labels_list)
         
-        train_emb, train_labels = build_dataset(train_df)
-        val_emb, val_labels = build_dataset(val_df)
+        train_emb, train_labels = build_orig_dataset(train_df)
+        val_emb, val_labels = build_orig_dataset(val_df)
+        
+        # Add augmented samples for training (if available)
+        aug_count = 0
+        if aug_emb_data is not None and aug_df is not None:
+            aug_emb_list = []
+            aug_label_list = []
+            
+            for _, row in aug_df.iterrows():
+                aug_id = row["id"]
+                original_id = row["original_id"]
+                
+                # Only include if: 1) original is in training set, 2) we have the embedding, 3) we have labels
+                if original_id in train_sample_ids and aug_id in aug_id_to_idx and original_id in id_to_labels:
+                    aug_idx = aug_id_to_idx[aug_id]
+                    aug_emb_list.append(aug_emb_data["embeddings"][aug_idx])
+                    aug_label_list.append(id_to_labels[original_id])
+            
+            if aug_emb_list:
+                aug_emb = torch.stack(aug_emb_list)
+                aug_labels = torch.stack(aug_label_list)
+                train_emb = torch.cat([train_emb, aug_emb], dim=0)
+                train_labels = torch.cat([train_labels, aug_labels], dim=0)
+                aug_count = len(aug_emb_list)
+                print(f"  + {aug_count} augmented samples → {len(train_emb)} total training")
         
         train_dataset = torch.utils.data.TensorDataset(train_emb, train_labels)
         val_dataset = torch.utils.data.TensorDataset(val_emb, val_labels)
@@ -791,11 +996,11 @@ def train_cv(
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
         
         # Fresh model for each fold
-        head = RegressionHead(embedding_dim=embedding_dim)
+        head = RegressionHead(embedding_dim=embedding_dim, dropout=dropout)
         head = head.to(device)
         
         criterion = nn.HuberLoss(delta=1.0)
-        optimizer = Adam(head.parameters(), lr=learning_rate)
+        optimizer = Adam(head.parameters(), lr=learning_rate, weight_decay=weight_decay)
         scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
         
         # Training loop for this fold
@@ -861,12 +1066,16 @@ def train_cv(
         "n_folds": n_folds,
         "embeddings_file": embeddings_file,
         "labels_csv": labels_csv,
+        "aug_embeddings": aug_embeddings,
+        "aug_csv": aug_csv,
         "mean_mae": float(mean_mae),
         "std_mae": float(std_mae),
         "fold_maes": [float(m) for m in all_fold_maes],
         "fold_details": fold_results,
         "batch_size": batch_size,
         "learning_rate": learning_rate,
+        "dropout": dropout,
+        "weight_decay": weight_decay,
         "epochs": epochs,
         "patience": patience,
         "seed": seed,
@@ -897,6 +1106,10 @@ def main():
                         help="Training labels CSV (used with --embeddings)")
     parser.add_argument("--val_csv", type=str, default=None,
                         help="Validation labels CSV (used with --embeddings)")
+    parser.add_argument("--aug_embeddings", type=str, default=None,
+                        help="Augmented embeddings file (optional, for more training data)")
+    parser.add_argument("--aug_csv", type=str, default=None,
+                        help="Augmented CSV with original_id mapping (required with --aug_embeddings)")
     
     # Mode 3: K-fold cross-validation
     parser.add_argument("--cv", action="store_true",
@@ -930,7 +1143,7 @@ def main():
     
     # Determine which mode to use
     if args.cv and args.embeddings and args.labels_csv:
-        # Mode 3: K-fold cross-validation
+        # Mode 3: K-fold cross-validation (optionally with augmented data)
         train_cv(
             embeddings_file=args.embeddings,
             labels_csv=args.labels_csv,
@@ -942,9 +1155,11 @@ def main():
             patience=args.patience,
             device=args.device,
             seed=args.seed,
+            aug_embeddings=args.aug_embeddings,
+            aug_csv=args.aug_csv,
         )
     elif args.embeddings and args.train_csv and args.val_csv:
-        # Mode 2: Embeddings + CSV labels
+        # Mode 2: Embeddings + CSV labels (optionally with augmented data)
         train_from_csv(
             embeddings_file=args.embeddings,
             train_csv=args.train_csv,
@@ -956,6 +1171,8 @@ def main():
             patience=args.patience,
             device=args.device,
             seed=args.seed,
+            aug_embeddings=args.aug_embeddings,
+            aug_csv=args.aug_csv,
         )
     elif args.train and args.val:
         # Mode 1: Embeddings with baked-in labels
@@ -977,14 +1194,24 @@ def main():
         print("\n" + "=" * 60)
         print("Examples:")
         print("=" * 60)
-        print("\nMode 1: Embeddings with baked-in labels")
+        print("\nMode 1: Embeddings with baked-in labels (legacy)")
         print("  python ml/train_fast.py --train data/embeddings/train.pt --val data/embeddings/val.pt")
-        print("\nMode 2: Embeddings + separate CSV labels (for pre-encoded audio)")
+        print("\nMode 2: Embeddings + separate CSV labels")
         print("  python ml/train_fast.py --embeddings data/embeddings/all_audio.pt \\")
         print("      --train_csv data/prepared/train.csv --val_csv data/prepared/val.csv")
+        print("\nMode 2b: With augmented data (recommended!)")
+        print("  python ml/train_fast.py --embeddings data/embeddings/all_audio.pt \\")
+        print("      --train_csv data/prepared/train.csv --val_csv data/prepared/val.csv \\")
+        print("      --aug_embeddings data/embeddings/all_augmented.pt \\")
+        print("      --aug_csv data/all_augmented.csv")
         print("\nMode 3: K-fold cross-validation")
         print("  python ml/train_fast.py --cv --embeddings data/embeddings/all_audio.pt \\")
         print("      --labels_csv data/prepared/all_data.csv --n_folds 6")
+        print("\nMode 3b: K-fold CV with augmentation (best!)")
+        print("  python ml/train_fast.py --cv --embeddings data/embeddings/all_audio.pt \\")
+        print("      --labels_csv data/prepared/all_data.csv --n_folds 6 \\")
+        print("      --aug_embeddings data/embeddings/all_augmented.pt \\")
+        print("      --aug_csv data/prepared/all_augmented.csv")
 
 
 if __name__ == "__main__":

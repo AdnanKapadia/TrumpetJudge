@@ -1,0 +1,11 @@
+{
+  "train_csv": "data/prepared/train.csv",
+  "val_csv": "data/prepared/val.csv",
+  "duration": 20.0,
+  "batch_size": 8,
+  "learning_rate": 0.001,
+  "epochs": 50,
+  "patience": 10,
+  "best_epoch": 10,
+  "best_val_mae": 0.8872975707054138
+}

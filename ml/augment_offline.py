@@ -88,6 +88,15 @@ def create_augmented_dataset(
     for idx, row in tqdm(df.iterrows(), total=len(df), desc="Augmenting"):
         # Load original audio
         audio_path = row["path"]
+        
+        # Handle path - try with data/ prefix if direct path doesn't exist
+        if not os.path.exists(audio_path):
+            if os.path.exists(f"data/{audio_path}"):
+                audio_path = f"data/{audio_path}"
+            else:
+                print(f"\n  Warning: Skipping {audio_path} (not found)")
+                continue
+        
         audio_data, sr = sf.read(audio_path, dtype='float32')
         
         # Resample if needed

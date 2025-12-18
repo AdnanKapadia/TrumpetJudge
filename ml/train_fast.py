@@ -7,30 +7,21 @@ This is ~10-15x faster than train.py since we skip the encoder.
 MODE 1: Embeddings with baked-in labels
     python ml/train_fast.py --train data/embeddings/train.pt --val data/embeddings/val.pt
 
-    # With augmented data:
-    python ml/train_fast.py \
-        --train data/embeddings/train.pt data/embeddings/train_augmented.pt \
-        --val data/embeddings/val.pt
-
-    # HYBRID mode (resamples augmented each epoch):
-    python ml/train_fast.py \
-        --train data/embeddings/train.pt data/embeddings/train_augmented.pt \
-        --val data/embeddings/val.pt \
-        --hybrid --aug_per_original 2
-
-MODE 2: Pre-encoded audio + separate label CSVs (recommended for growing datasets)
-    # First, encode ALL audio once:
-    python ml/precompute.py --csv data/to_label.csv --output data/embeddings/all_audio.pt --no_labels
-
-    # Then train with any label CSV (add more labels anytime!):
+MODE 2: Pre-encoded audio + separate label CSVs
     python ml/train_fast.py \
         --embeddings data/embeddings/all_audio.pt \
         --train_csv data/prepared/train.csv \
         --val_csv data/prepared/val.csv
 
+MODE 3: K-fold cross-validation (recommended for reliable metrics)
+    python ml/train_fast.py --cv \
+        --embeddings data/embeddings/all_audio.pt \
+        --labels_csv data/prepared/all_data.csv \
+        --n_folds 6
+
 Prerequisites:
-    Mode 1: Run precompute.py with labels
-    Mode 2: Run precompute.py --no_labels, then prepare_data.py to create label CSVs
+    - Run precompute.py to create embedding files
+    - For Mode 2/3: Run precompute.py --no_labels, then prepare_data.py
 """
 
 import os
@@ -680,6 +671,216 @@ def train_from_csv(
     return head, history
 
 
+def train_cv(
+    embeddings_file: str,
+    labels_csv: str,
+    n_folds: int = 6,
+    output_dir: str = "checkpoints",
+    embedding_dim: int = 2048,
+    batch_size: int = 64,
+    learning_rate: float = 1e-3,
+    epochs: int = 100,
+    patience: int = 15,
+    device: str = None,
+    seed: int = 42,
+):
+    """
+    K-fold cross-validation on precomputed embeddings.
+    
+    Splits data by video_id to prevent data leakage between folds.
+    
+    Args:
+        embeddings_file: Path to .pt file with all precomputed embeddings
+        labels_csv: Path to CSV with all labels (e.g., all_data.csv)
+        n_folds: Number of folds (default: 6)
+        output_dir: Directory to save checkpoints
+        ... (other args same as train_from_csv)
+    """
+    import pandas as pd
+    from sklearn.model_selection import KFold
+    from models.head_regressor import SCORE_NAMES, scale_scores, RegressionHead
+    
+    # Set seed
+    set_seed(seed)
+    
+    # Setup output
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = output_dir / f"cv_{n_folds}fold_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    
+    print("=" * 60)
+    print(f"TrumpetJudge {n_folds}-Fold Cross-Validation (Fast)")
+    print("=" * 60)
+    
+    # Device
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"\n  Device: {device}")
+    
+    # Load embeddings
+    print(f"\nLoading embeddings from {embeddings_file}...")
+    emb_data = torch.load(embeddings_file, map_location="cpu", weights_only=False)
+    emb_ids = emb_data["ids"]
+    all_embeddings = emb_data["embeddings"]
+    id_to_idx = {id_: idx for idx, id_ in enumerate(emb_ids)}
+    print(f"  {len(emb_ids)} embeddings loaded")
+    
+    # Load labels
+    print(f"\nLoading labels from {labels_csv}...")
+    labels_df = pd.read_csv(labels_csv)
+    print(f"  {len(labels_df)} labeled samples")
+    
+    # Extract video_id from sample id (e.g., "abc123_0" -> "abc123")
+    labels_df["video_id"] = labels_df["id"].apply(lambda x: x.rsplit("_", 1)[0] if "_" in str(x) else str(x))
+    
+    # Get unique video IDs for splitting
+    unique_videos = labels_df["video_id"].unique()
+    print(f"  {len(unique_videos)} unique videos")
+    
+    # K-Fold split on videos (not samples) to prevent leakage
+    kfold = KFold(n_splits=n_folds, shuffle=True, random_state=seed)
+    
+    # Track results
+    fold_results = []
+    all_fold_maes = []
+    
+    print("\n" + "=" * 60)
+    print(f"Starting {n_folds}-Fold Cross-Validation...")
+    print("=" * 60)
+    
+    for fold_idx, (train_video_idx, val_video_idx) in enumerate(kfold.split(unique_videos), 1):
+        print(f"\n{'='*60}")
+        print(f"FOLD {fold_idx}/{n_folds}")
+        print(f"{'='*60}")
+        
+        # Get train/val video IDs
+        train_videos = set(unique_videos[train_video_idx])
+        val_videos = set(unique_videos[val_video_idx])
+        
+        # Split samples by video
+        train_df = labels_df[labels_df["video_id"].isin(train_videos)]
+        val_df = labels_df[labels_df["video_id"].isin(val_videos)]
+        
+        print(f"  Train: {len(train_df)} samples ({len(train_videos)} videos)")
+        print(f"  Val: {len(val_df)} samples ({len(val_videos)} videos)")
+        
+        # Build datasets for this fold
+        def build_dataset(df):
+            embeddings_list = []
+            labels_list = []
+            for _, row in df.iterrows():
+                sample_id = row["id"]
+                if sample_id in id_to_idx:
+                    idx = id_to_idx[sample_id]
+                    embeddings_list.append(all_embeddings[idx])
+                    scores = torch.tensor([row[col] for col in SCORE_NAMES], dtype=torch.float32)
+                    scores = scale_scores(scores)
+                    labels_list.append(scores)
+            return torch.stack(embeddings_list), torch.stack(labels_list)
+        
+        train_emb, train_labels = build_dataset(train_df)
+        val_emb, val_labels = build_dataset(val_df)
+        
+        train_dataset = torch.utils.data.TensorDataset(train_emb, train_labels)
+        val_dataset = torch.utils.data.TensorDataset(val_emb, val_labels)
+        
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+        
+        # Fresh model for each fold
+        head = RegressionHead(embedding_dim=embedding_dim)
+        head = head.to(device)
+        
+        criterion = nn.HuberLoss(delta=1.0)
+        optimizer = Adam(head.parameters(), lr=learning_rate)
+        scheduler = ReduceLROnPlateau(optimizer, mode="min", factor=0.5, patience=5)
+        
+        # Training loop for this fold
+        best_val_mae = float("inf")
+        best_epoch = 0
+        patience_counter = 0
+        
+        for epoch in range(1, epochs + 1):
+            train_loss = train_epoch(head, train_loader, optimizer, criterion, device)
+            val_metrics = validate(head, val_loader, criterion, device)
+            
+            val_mae = val_metrics["mae"]
+            scheduler.step(val_mae)
+            
+            if val_mae < best_val_mae:
+                best_val_mae = val_mae
+                best_epoch = epoch
+                patience_counter = 0
+                
+                # Save best model for this fold
+                fold_dir = run_dir / f"fold_{fold_idx}"
+                fold_dir.mkdir(parents=True, exist_ok=True)
+                checkpoint = {
+                    "fold": fold_idx,
+                    "epoch": epoch,
+                    "head_state_dict": head.state_dict(),
+                    "val_mae": val_mae,
+                    "val_mae_per_score": val_metrics["mae_per_score"],
+                }
+                torch.save(checkpoint, fold_dir / "best_model.pt")
+            else:
+                patience_counter += 1
+                if patience_counter >= patience:
+                    break
+        
+        print(f"  Best: Epoch {best_epoch}, MAE: {best_val_mae:.3f}")
+        
+        fold_results.append({
+            "fold": fold_idx,
+            "best_epoch": best_epoch,
+            "best_val_mae": best_val_mae,
+            "train_samples": len(train_df),
+            "val_samples": len(val_df),
+        })
+        all_fold_maes.append(best_val_mae)
+    
+    # Summary
+    mean_mae = np.mean(all_fold_maes)
+    std_mae = np.std(all_fold_maes)
+    
+    print("\n" + "=" * 60)
+    print(f"{n_folds}-Fold Cross-Validation Complete!")
+    print("=" * 60)
+    
+    print(f"\nPer-fold MAE:")
+    for i, mae in enumerate(all_fold_maes, 1):
+        print(f"  Fold {i}: {mae:.3f}")
+    
+    print(f"\n📊 Mean MAE: {mean_mae:.3f} ± {std_mae:.3f}")
+    
+    # Save summary
+    summary = {
+        "n_folds": n_folds,
+        "embeddings_file": embeddings_file,
+        "labels_csv": labels_csv,
+        "mean_mae": float(mean_mae),
+        "std_mae": float(std_mae),
+        "fold_maes": [float(m) for m in all_fold_maes],
+        "fold_details": fold_results,
+        "batch_size": batch_size,
+        "learning_rate": learning_rate,
+        "epochs": epochs,
+        "patience": patience,
+        "seed": seed,
+    }
+    with open(run_dir / "cv_summary.json", "w") as f:
+        json.dump(summary, f, indent=2)
+    
+    print(f"\nResults saved to: {run_dir}")
+    print(f"  - cv_summary.json (overall results)")
+    print(f"  - fold_*/best_model.pt (each fold's best model)")
+    
+    return summary
+
+
 def main():
     parser = argparse.ArgumentParser(description="Fast training on precomputed embeddings")
     
@@ -696,6 +897,14 @@ def main():
                         help="Training labels CSV (used with --embeddings)")
     parser.add_argument("--val_csv", type=str, default=None,
                         help="Validation labels CSV (used with --embeddings)")
+    
+    # Mode 3: K-fold cross-validation
+    parser.add_argument("--cv", action="store_true",
+                        help="Run k-fold cross-validation")
+    parser.add_argument("--labels_csv", type=str, default=None,
+                        help="Labels CSV for CV (e.g., all_data.csv)")
+    parser.add_argument("--n_folds", type=int, default=6,
+                        help="Number of folds for CV (default: 6)")
     
     # Common options
     parser.add_argument("--output_dir", type=str, default="checkpoints",
@@ -720,7 +929,21 @@ def main():
     args = parser.parse_args()
     
     # Determine which mode to use
-    if args.embeddings and args.train_csv and args.val_csv:
+    if args.cv and args.embeddings and args.labels_csv:
+        # Mode 3: K-fold cross-validation
+        train_cv(
+            embeddings_file=args.embeddings,
+            labels_csv=args.labels_csv,
+            n_folds=args.n_folds,
+            output_dir=args.output_dir,
+            batch_size=args.batch_size,
+            learning_rate=args.lr,
+            epochs=args.epochs,
+            patience=args.patience,
+            device=args.device,
+            seed=args.seed,
+        )
+    elif args.embeddings and args.train_csv and args.val_csv:
         # Mode 2: Embeddings + CSV labels
         train_from_csv(
             embeddings_file=args.embeddings,
@@ -759,6 +982,9 @@ def main():
         print("\nMode 2: Embeddings + separate CSV labels (for pre-encoded audio)")
         print("  python ml/train_fast.py --embeddings data/embeddings/all_audio.pt \\")
         print("      --train_csv data/prepared/train.csv --val_csv data/prepared/val.csv")
+        print("\nMode 3: K-fold cross-validation")
+        print("  python ml/train_fast.py --cv --embeddings data/embeddings/all_audio.pt \\")
+        print("      --labels_csv data/prepared/all_data.csv --n_folds 6")
 
 
 if __name__ == "__main__":

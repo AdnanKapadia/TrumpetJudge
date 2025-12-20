@@ -342,7 +342,15 @@ class EnsembleModel(nn.Module):
         # Recreate models
         models = []
         for state_dict in checkpoint["model_states"]:
-            model = RegressionHead(embedding_dim=checkpoint["embedding_dim"])
+            # Infer hidden dims from state dict layer shapes
+            hidden_dim = state_dict["network.0.weight"].shape[0]   # First layer output
+            hidden_dim2 = state_dict["network.3.weight"].shape[0]  # Second layer output
+            
+            model = RegressionHead(
+                embedding_dim=checkpoint["embedding_dim"],
+                hidden_dim=hidden_dim,
+                hidden_dim2=hidden_dim2,
+            )
             model.load_state_dict(state_dict)
             model = model.to(device)
             model.eval()

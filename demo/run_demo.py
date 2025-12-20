@@ -131,7 +131,7 @@ def load_models(run_name=None, ensemble_path=None, gating_path=None, device_over
         if gating_path:
             gating_file = Path(gating_path)
         else:
-            gating_file = Path(__file__).parent.parent / "models" / "checkpoints" / "gating" / "best_gating.pt"
+            gating_file = Path(__file__).parent.parent / "models" / "weights" / "best_gating.pt"
         
         if gating_file.exists():
             try:
@@ -724,25 +724,25 @@ if __name__ == "__main__":
         "--run",
         type=str,
         default=None,
-        help="Name of the run to use (e.g., 'run_20251218_052428'). If not specified, uses latest run or TRUMPETJUDGE_RUN env var."
+        help="Name of the run to use (e.g., 'run_20251218_052428'). If not specified, uses ensemble."
     )
     parser.add_argument(
-        "    --ensemble",
+        "--ensemble",
         type=str,
-        default=None,
-        help="Path to an ensemble checkpoint (e.g., 'models/weights/best_ensemble.pt'). If provided, overrides --run."
+        default="models/weights/ensemble.pt",
+        help="Path to an ensemble checkpoint. Set to empty string to disable."
     )
     parser.add_argument(
         "--gating",
         type=str,
-        default=None,
-        help="Path to gating checkpoint (e.g., 'models/checkpoints/gating/best_gating.pt'). If not provided, tries default path.",
+        default="models/weights/best_gating.pt",
+        help="Path to gating checkpoint.",
     )
     parser.add_argument(
         "--device",
         type=str,
-        default=None,
-        help="Device to use for inference (e.g., 'cpu' or 'cuda'). Defaults to auto-detect."
+        default="cpu",
+        help="Device to use for inference (e.g., 'cpu' or 'cuda')."
     )
     parser.add_argument(
         "--share",
@@ -757,9 +757,10 @@ if __name__ == "__main__":
     
     # Pre-load models
     print("\nLoading models...")
+    ensemble_path = args.ensemble if args.ensemble else None  # Empty string = disable
     success, message = load_models(
         run_name=args.run,
-        ensemble_path=args.ensemble,
+        ensemble_path=ensemble_path,
         gating_path=args.gating,
         device_override=args.device,
     )

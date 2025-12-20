@@ -32,9 +32,9 @@
 
 I have played trumpet since middle school, and over the years my involvement with the instrument has deepened considerably. Most significantly, I became involved with drum corps---an activity that can be thought of as the competitive, summertime extension of marching band. Corps tour across the country throughout the summer, rehearsing upwards of twelve hours per day, all building toward a few minutes of performance at championships. The brass sections in this activity are exceptionally demanding. Everyone around you is serious about their craft, and the instructional staff expects measurable improvement on a daily basis.
 
-In this environment, feedback is essential to growth. The standard workflow involves recording yourself playing an assigned passage---scales, excerpts, lyrical etudes, technical exercises---and submitting the recording for evaluation by the brass caption head. Sometimes feedback arrives quickly and in detail. Other times, days pass before any response comes, and by then the focus has shifted to the next assignment. This delay creates a frustratingly slow feedback loop that can impede efficient practice.
+In this environment, feedback is essential to growth. During spring training---the months before tour begins---the standard workflow involves recording yourself playing an assigned passage and submitting the recording for evaluation by the brass caption head. Sometimes feedback arrives quickly. Other times, days pass before any response comes, and by then the focus has shifted to the next assignment. This delay creates a frustratingly slow feedback loop.
 
-This observation motivated the development of TrumpetJudge. The central question was: what if a tool existed that could provide performance scores instantly? Such a tool would not aim to replace human instructors---there is no substitute for the expertise of a knowledgeable teacher---but rather to supplement the learning process. It would offer players a quick diagnostic immediately after playing, enabling faster iteration and more focused practice between formal lessons.
+This observation motivated the development of TrumpetJudge. The central question was: what if a tool existed that could provide performance scores instantly? Such a tool would not aim to replace human instructors---there is no substitute for the expertise of a knowledgeable teacher---but rather to supplement the learning process. It would offer players a quick diagnostic immediately after playing, enabling faster iteration and more focused practice. While my experience comes from drum corps, the tool is intended for any trumpet player looking to improve---whether practicing independently, preparing for auditions, or just wanting objective feedback on their playing.
 
 TrumpetJudge addresses this need by analyzing uploaded trumpet recordings and returning scores across five musical dimensions:
 
@@ -54,13 +54,9 @@ Each dimension is scored on a 1--5 scale, where 5 represents professional-calibe
 
 \subsection*{Training Data Collection}
 
-The effectiveness of any machine learning system depends fundamentally on the quality and relevance of its training data. For TrumpetJudge, I needed a substantial corpus of trumpet recordings paired with reliable quality assessments.
+The training data came from my drum corps. Throughout the season, our brass staff assigns playing tests covering scales, excerpts, lyrical etudes, and technical passages. Corps members submit recordings of these assignments, which gave me access to audio samples representing a range of playing ability---the passages vary in difficulty, and recordings span different points in the season as players improve.
 
-The primary source of audio material was my drum corps. Throughout each season, our brass staff assigns regular playing tests covering a variety of musical challenges: major and minor scales, orchestral and corps repertoire excerpts, lyrical phrases emphasizing tone production, and technical passages demanding precision. Corps members submit recordings of these assignments, which provided me access to hundreds of audio samples spanning a wide range of ability levels---from first-year members still developing their fundamentals to experienced veterans with years of training.
-
-This diversity proved valuable. Rather than training the model only on polished professional recordings versus obvious beginners, the dataset captured the nuanced spectrum of real improvement. The model could learn to distinguish between adjacent skill levels, not just extremes.
-
-For the labeling process, I developed a web-based annotation interface using the Gradio framework. I then recruited several trumpet-playing friends to assist with the rating task. We would listen to each audio clip and independently score it across all five dimensions. Calibration presented challenges---one person's interpretation of a ``3'' for tone quality might be another's ``4.'' To address this, we discussed borderline cases, established shared reference points, and aimed for consistency within our labeling group. Some subjectivity inevitably remains embedded in the labels, but this collaborative approach helped mitigate individual biases.
+For labeling, I built a simple annotation interface using Gradio. Two friends and I listened to each clip and scored it across the five dimensions. We discussed borderline cases and established shared reference points to stay calibrated, though some subjectivity inevitably remains.
 
 \subsection*{System Architecture}
 
@@ -145,7 +141,7 @@ Then install dependencies:
 pip install -r requirements.txt
 \end{verbatim}
 
-The first execution will automatically download the PANNs model weights (approximately 300 MB).
+\textbf{Note:} The first time you run the demo, the PANNs CNN14 model weights (approximately 300 MB) will be automatically downloaded and cached to \texttt{\textasciitilde/panns\_data/}. This is a one-time download---subsequent runs will use the cached weights. A progress indicator will display during the download.
 
 \subsection*{Running the Demo}
 

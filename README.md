@@ -6,11 +6,11 @@ AI-powered feedback for trumpet performances. Upload or record a trumpet clip an
 
 - **Instant AI Feedback** - Get scores in seconds, not days
 - **5 Scoring Dimensions**:
-  - 🎯 **Intonation** - Pitch accuracy and tuning
-  - 🎵 **Tone Quality** - Warmth, clarity, and richness
-  - ⏱️ **Timing** - Rhythmic accuracy and steadiness
-  - 🎼 **Technique** - Articulation, dynamics, and control
-  - ⭐ **Overall** - General performance quality
+  - **Intonation** - Pitch accuracy and tuning
+  - **Tone Quality** - Warmth, clarity, and richness
+  - **Timing** - Rhythmic accuracy and steadiness
+  - **Technique** - Articulation, dynamics, and control
+  - **Overall** - General performance quality
 - **Web Interface** - Upload files or record directly from your browser
 - **Personalized Tips** - Get improvement suggestions based on your weakest areas
 

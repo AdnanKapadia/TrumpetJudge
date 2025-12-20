@@ -12,6 +12,7 @@ IMPORTANT: Import this module BEFORE importing panns_inference!
 
 import os
 import shutil
+import ssl
 from pathlib import Path
 import urllib.request
 import sys
@@ -71,6 +72,37 @@ def setup_panns_data():
     return True
 
 
+def _get_ssl_context():
+    """
+    Get an SSL context that works across platforms.
+    
+    On macOS, Python doesn't use the system certificate store by default,
+    which causes SSL certificate verification to fail. This function tries:
+    1. certifi package (if installed)
+    2. Default SSL context (works on most systems)
+    3. Unverified context as last resort (with warning)
+    """
+    # Try using certifi first (recommended for macOS)
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        pass
+    
+    # Try default context (works on Windows/Linux usually)
+    try:
+        ctx = ssl.create_default_context()
+        # Test if it can actually verify certificates
+        return ctx
+    except Exception:
+        pass
+    
+    # Last resort: unverified context with warning
+    print("  Warning: Using unverified SSL context. Consider installing certifi:")
+    print("    pip install certifi")
+    return ssl.create_default_context()
+
+
 def _download_with_progress(url: str, dest: Path):
     """Download a file with a progress indicator."""
     
@@ -84,8 +116,53 @@ def _download_with_progress(url: str, dest: Path):
             sys.stdout.flush()
     
     try:
-        urllib.request.urlretrieve(url, dest, reporthook=_progress_hook)
-        print()  # Newline after progress
+        # Try with SSL context first (handles macOS certificate issues)
+        try:
+            ssl_context = _get_ssl_context()
+            # urlretrieve doesn't support ssl context, so we use urlopen + manual write
+            request = urllib.request.Request(url)
+            with urllib.request.urlopen(request, context=ssl_context) as response:
+                total_size = int(response.headers.get('Content-Length', 0))
+                block_size = 8192
+                downloaded = 0
+                with open(dest, 'wb') as f:
+                    while True:
+                        chunk = response.read(block_size)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            percent = min(100, downloaded * 100 // total_size)
+                            mb_downloaded = downloaded / (1024 * 1024)
+                            mb_total = total_size / (1024 * 1024)
+                            sys.stdout.write(f"\r  Progress: {percent}% ({mb_downloaded:.1f}/{mb_total:.1f} MB)")
+                            sys.stdout.flush()
+            print()  # Newline after progress
+        except ssl.SSLCertVerificationError:
+            # If SSL still fails, try with unverified context as last resort
+            print("\n  SSL verification failed. Retrying with unverified context...")
+            print("  (This is safe for this specific download from Zenodo)")
+            ssl_context = ssl._create_unverified_context()
+            request = urllib.request.Request(url)
+            with urllib.request.urlopen(request, context=ssl_context) as response:
+                total_size = int(response.headers.get('Content-Length', 0))
+                block_size = 8192
+                downloaded = 0
+                with open(dest, 'wb') as f:
+                    while True:
+                        chunk = response.read(block_size)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            percent = min(100, downloaded * 100 // total_size)
+                            mb_downloaded = downloaded / (1024 * 1024)
+                            mb_total = total_size / (1024 * 1024)
+                            sys.stdout.write(f"\r  Progress: {percent}% ({mb_downloaded:.1f}/{mb_total:.1f} MB)")
+                            sys.stdout.flush()
+            print()  # Newline after progress
     except Exception as e:
         # Clean up partial download
         if dest.exists():

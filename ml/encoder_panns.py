@@ -17,6 +17,10 @@ import torch.nn as nn
 import torchaudio
 from typing import Optional, Tuple
 
+# Setup PANNs data files BEFORE importing panns_inference
+# This handles downloading model weights and copying labels file
+from . import panns_setup  # noqa: F401 - side effect: sets up panns_data
+
 # Try to import panns_inference, provide helpful error if not installed
 try:
     from panns_inference import AudioTagging

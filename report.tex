@@ -1,0 +1,174 @@
+\documentclass[10pt, a4paper, twocolumn]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[margin=0.75in]{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{enumitem}
+\usepackage{xcolor}
+
+% Spacing
+\setlength{\parskip}{0.4em}
+\setlength{\parindent}{0em}
+\setlist{noitemsep, topsep=3pt, leftmargin=1.2em}
+
+\title{\textbf{TrumpetJudge} \\ \large AI-Powered Feedback for Trumpet Performances}
+\author{Adnan}
+\date{\today}
+
+\begin{document}
+
+\twocolumn[
+  \begin{@twocolumnfalse}
+    \maketitle
+    \vspace{-0.5em}
+  \end{@twocolumnfalse}
+]
+
+%----------------------------------------------------------
+\section{Purpose}
+%----------------------------------------------------------
+
+I have played trumpet since middle school, and over the years my involvement with the instrument has deepened considerably. Most significantly, I became involved with drum corps---an activity that can be thought of as the competitive, summertime extension of marching band. Corps tour across the country throughout the summer, rehearsing upwards of twelve hours per day, all building toward a few minutes of performance at championships. The brass sections in this activity are exceptionally demanding. Everyone around you is serious about their craft, and the instructional staff expects measurable improvement on a daily basis.
+
+In this environment, feedback is essential to growth. The standard workflow involves recording yourself playing an assigned passage---scales, excerpts, lyrical etudes, technical exercises---and submitting the recording for evaluation by the brass caption head. Sometimes feedback arrives quickly and in detail. Other times, days pass before any response comes, and by then the focus has shifted to the next assignment. This delay creates a frustratingly slow feedback loop that can impede efficient practice.
+
+This observation motivated the development of TrumpetJudge. The central question was: what if a tool existed that could provide performance scores instantly? Such a tool would not aim to replace human instructors---there is no substitute for the expertise of a knowledgeable teacher---but rather to supplement the learning process. It would offer players a quick diagnostic immediately after playing, enabling faster iteration and more focused practice between formal lessons.
+
+TrumpetJudge addresses this need by analyzing uploaded trumpet recordings and returning scores across five musical dimensions:
+
+\begin{itemize}
+    \item \textbf{Overall Quality} -- A holistic assessment of the performance
+    \item \textbf{Intonation} -- Pitch accuracy and tuning consistency
+    \item \textbf{Tone Quality} -- Warmth, clarity, resonance, and richness of sound
+    \item \textbf{Timing} -- Rhythmic accuracy and temporal steadiness
+    \item \textbf{Technique} -- Articulation clarity, dynamic control, and mechanical precision
+\end{itemize}
+
+Each dimension is scored on a 1--5 scale, where 5 represents professional-caliber playing, 3 indicates average competency, and 1 signals significant deficiencies requiring attention.
+
+%----------------------------------------------------------
+\section{Key Features and Techniques}
+%----------------------------------------------------------
+
+\subsection*{Training Data Collection}
+
+The effectiveness of any machine learning system depends fundamentally on the quality and relevance of its training data. For TrumpetJudge, I needed a substantial corpus of trumpet recordings paired with reliable quality assessments.
+
+The primary source of audio material was my drum corps. Throughout each season, our brass staff assigns regular playing tests covering a variety of musical challenges: major and minor scales, orchestral and corps repertoire excerpts, lyrical phrases emphasizing tone production, and technical passages demanding precision. Corps members submit recordings of these assignments, which provided me access to hundreds of audio samples spanning a wide range of ability levels---from first-year members still developing their fundamentals to experienced veterans with years of training.
+
+This diversity proved valuable. Rather than training the model only on polished professional recordings versus obvious beginners, the dataset captured the nuanced spectrum of real improvement. The model could learn to distinguish between adjacent skill levels, not just extremes.
+
+For the labeling process, I developed a web-based annotation interface using the Gradio framework. I then recruited several trumpet-playing friends to assist with the rating task. We would listen to each audio clip and independently score it across all five dimensions. Calibration presented challenges---one person's interpretation of a ``3'' for tone quality might be another's ``4.'' To address this, we discussed borderline cases, established shared reference points, and aimed for consistency within our labeling group. Some subjectivity inevitably remains embedded in the labels, but this collaborative approach helped mitigate individual biases.
+
+\subsection*{System Architecture}
+
+The system employs a transfer learning approach with two primary components:
+
+\textbf{PANNs CNN14 Encoder (frozen):} PANNs (Pretrained Audio Neural Networks) refers to a family of convolutional neural networks trained on AudioSet, a large-scale dataset containing millions of labeled audio clips spanning diverse sound categories. The CNN14 variant produces a 2048-dimensional embedding vector that encodes the acoustic characteristics of any input audio segment. Crucially, this encoder remains frozen during training---its weights are not updated. It serves purely as a feature extractor, transforming raw audio waveforms into a rich representational space.
+
+\textbf{Regression Head (trained):} On top of the frozen embeddings, I train a small multilayer perceptron (MLP) consisting of two hidden layers (64 and 16 neurons, respectively) followed by a 5-neuron output layer corresponding to the five score dimensions. This compact architecture was chosen deliberately. With only a few hundred labeled examples, larger networks would rapidly overfit. Dropout regularization and the injection of Gaussian noise into the embeddings during training further encourage the model to generalize rather than memorize.
+
+The complete inference pipeline operates as follows:
+\begin{verbatim}
+Audio (WAV) 
+  → Resample to 32kHz
+  → PANNs CNN14 Encoder
+  → 2048-dim embedding
+  → Regression Head (MLP)
+  → 5 scores (1-5 scale)
+\end{verbatim}
+
+For recordings longer than 20 seconds, the audio is segmented into 20-second chunks, each chunk is scored independently, and the final scores are computed as the average across all chunks.
+
+\subsection*{Data Augmentation Techniques}
+
+To improve model robustness and prevent overfitting, I implemented several augmentation strategies applied during training:
+
+\textbf{Convolution Reverb Augmentation:} This technique was particularly important. Using the fast convolution algorithm from class---an FFT-based approach that efficiently computes the convolution of an audio signal with an impulse response---I paired the implementation with the Aachen Impulse Response (AIR) database, an open-source collection of room impulse responses captured in various acoustic environments. During training, each audio clip is randomly convolved with one of 50 different room IRs at a wet mix between 5\% and 20\%. This augmentation teaches the model to be invariant to room acoustics. Without it, the model might learn spurious correlations, such as associating echoey recordings with lower quality simply because of the recording environment rather than the actual playing.
+
+\textbf{Gain Variation:} Random gain adjustments of $\pm$12 dB prevent the model from using loudness as a shortcut for quality assessment.
+
+\textbf{Time Shifting:} Random temporal shifts of $\pm$50 milliseconds make the model invariant to precise alignment.
+
+\textbf{Additive Noise:} White, pink, and brown noise are added at signal-to-noise ratios between 20 and 35 dB to improve robustness to recording conditions.
+
+\subsection*{Gating Mechanism}
+
+Not all submitted audio represents valid, scorable trumpet performances. Some recordings contain extended periods of silence, speech, non-trumpet sounds, or severe audio quality issues. To handle these cases, I trained a separate binary classification head---the ``gating'' model---that predicts whether a given audio clip is suitable for scoring. If the gating model classifies a clip as invalid, the system declines to produce scores rather than returning meaningless predictions.
+
+\subsection*{Ensemble Predictions}
+
+The deployed demo application uses an ensemble of multiple independently trained models. By averaging predictions across the ensemble, the system produces more stable and reliable scores. Additionally, the variance across ensemble members provides a natural estimate of prediction uncertainty, which can be displayed to users.
+
+%----------------------------------------------------------
+\section{Instructions}
+%----------------------------------------------------------
+
+The complete source code is available at:
+
+\begin{center}
+\url{https://github.com/adnan/TrumpetJudge}
+\end{center}
+
+\subsection*{Installation and Setup}
+
+Clone the repository and set up a Python virtual environment:
+
+\begin{verbatim}
+git clone https://github.com/adnan/TrumpetJudge
+cd TrumpetJudge
+python -m venv .venv
+\end{verbatim}
+
+Activate the virtual environment:
+
+\textbf{Mac/Linux:}
+\begin{verbatim}
+source .venv/bin/activate
+\end{verbatim}
+
+\textbf{Windows (Command Prompt):}
+\begin{verbatim}
+.venv\Scripts\activate
+\end{verbatim}
+
+\textbf{Windows (PowerShell):}
+\begin{verbatim}
+.venv\Scripts\Activate.ps1
+\end{verbatim}
+
+Then install dependencies:
+
+\begin{verbatim}
+pip install -r requirements.txt
+\end{verbatim}
+
+The first execution will automatically download the PANNs model weights (approximately 300 MB).
+
+\subsection*{Running the Demo}
+
+Launch the web application with:
+
+\begin{verbatim}
+python demo/run_demo.py
+\end{verbatim}
+
+This starts a local Gradio server and opens an interface in your browser. The demo provides three ways to get your playing evaluated:
+
+\textbf{Try Sample Recordings:} The interface includes a dropdown menu with pre-loaded example recordings from the training dataset. These samples span various skill levels and musical contexts, allowing you to see how the system scores different types of performances before testing your own playing.
+
+\textbf{Upload Your Own Audio:} Click the upload area to select a WAV file from your computer. The system accepts recordings of any length---longer files are automatically segmented into 20-second chunks and scored individually, with the final result averaged across all segments.
+
+\textbf{Record Live:} Click the microphone icon to record directly from your browser. This is the most convenient option for quick practice feedback. Play your passage, stop the recording, and receive scores within seconds.
+
+After providing audio through any of these methods, click ``Analyze Performance.'' The system will display your scores across all five dimensions, with visual progress bars and letter grades. A pitch contour plot is also generated, showing your intonation over time with notes color-coded for easy visualization.
+
+\vspace{1em}
+\hrule
+\vspace{0.5em}
+\small
+\textbf{Acknowledgments:} This project relies on several open-source tools and resources: PANNs for the pretrained audio encoder, Gradio for web interface development, librosa for audio analysis and pitch detection, PyTorch for model training, and the Aachen Impulse Response Database for room impulse responses used in data augmentation.
+
+\end{document}

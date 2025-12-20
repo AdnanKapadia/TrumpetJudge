@@ -121,9 +121,14 @@ class EnsembleModel(nn.Module):
             # Load checkpoint
             checkpoint = torch.load(model_path, map_location=device, weights_only=False)
             
-            # Create model and load state dict
-            model = RegressionHead(embedding_dim=2048)
-            model.load_state_dict(checkpoint["head_state_dict"])
+            # Infer hidden dims from state dict layer shapes
+            state_dict = checkpoint["head_state_dict"]
+            hidden_dim = state_dict["network.0.weight"].shape[0]   # First layer output
+            hidden_dim2 = state_dict["network.3.weight"].shape[0]  # Second layer output
+            
+            # Create model with correct architecture and load state dict
+            model = RegressionHead(embedding_dim=2048, hidden_dim=hidden_dim, hidden_dim2=hidden_dim2)
+            model.load_state_dict(state_dict)
             model = model.to(device)
             model.eval()
             

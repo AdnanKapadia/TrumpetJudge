@@ -100,7 +100,7 @@ def run_sweep(
     labels_csv: str = "data/prepared/all_data.csv",
     aug_embeddings: str = "data/embeddings/all_augmented.pt",
     aug_csv: str = "data/prepared/all_augmented.csv",
-    output_dir: str = "sweeps",
+    output_dir: str = "models/sweeps",
     n_folds: int = 6,
     n_trials: int = 30,
     epochs: int = 100,
@@ -220,7 +220,7 @@ def main():
                         help="Augmented embeddings")
     parser.add_argument("--aug_csv", type=str, default="data/prepared/all_augmented.csv",
                         help="Augmented CSV")
-    parser.add_argument("--output", type=str, default="sweeps",
+    parser.add_argument("--output", type=str, default="models/sweeps",
                         help="Output directory")
     parser.add_argument("--n_folds", type=int, default=6,
                         help="Number of CV folds")

@@ -37,29 +37,39 @@ This launches a web interface where you can upload or record trumpet audio and g
 ```
 TrumpetJudge/
 ├── demo/
-│   └── run_demo.py        # 🎺 Main demo app - upload/record and get scores
+│   └── run_demo.py          # 🎺 Main demo app - upload/record and get scores
 ├── ml/
-│   ├── train.py           # Train the regression model
-│   ├── predict.py         # Run inference on audio files
-│   ├── dataset.py         # PyTorch dataset for trumpet audio
-│   ├── prepare_data.py    # Prepare train/val splits from labels
-│   └── eval.py            # Model evaluation
-├── models/
-│   ├── encoder_panns.py   # PANNs CNN14 audio encoder (frozen)
-│   └── head_regressor.py  # Trainable regression head
+│   ├── encoder_panns.py     # PANNs CNN14 audio encoder (frozen)
+│   ├── head_regressor.py    # Trainable regression/gating heads
+│   ├── train.py             # Train the regression model
+│   ├── train_fast.py        # Fast training on precomputed embeddings
+│   ├── predict.py           # Run inference on audio files
+│   ├── dataset.py           # PyTorch dataset for trumpet audio
+│   ├── prepare_data.py      # Prepare train/val splits from labels
+│   ├── ensemble.py          # Ensemble model for robust predictions
+│   ├── sweep.py             # Hyperparameter optimization (Optuna)
+│   └── augment.py           # Data augmentation utilities
+├── models/                  # Saved model artifacts
+│   ├── checkpoints/         # Training checkpoints (run_*, cv_*, gated_run_*)
+│   │   └── gating/          # Gating head checkpoints
+│   ├── sweeps/              # Hyperparameter sweep results
+│   └── weights/             # Exported model weights for deployment
 ├── label/
-│   └── app.py             # Gradio UI for human labelers
+│   └── app.py               # Gradio UI for human labelers
 ├── dsp/
-│   ├── tuning_analysis.py # Pitch/intonation analysis
-│   ├── rhythm_analysis.py # Timing analysis
-│   ├── sheet_music.py     # Generate sheet music from audio
-│   └── plots.py           # Visualization utilities
+│   ├── tuning_analysis.py   # Pitch/intonation analysis
+│   ├── rhythm_analysis.py   # Timing analysis
+│   ├── sheet_music.py       # Generate sheet music from audio
+│   └── plots.py             # Visualization utilities
+├── scripts/
+│   └── analyze_data.py      # Data analysis utilities
+├── utils/
+│   └── youtube_downloader.py  # Download trumpet videos from YouTube
 ├── data/
-│   ├── audio/             # Audio chunks for training
-│   ├── labels/            # Human labels (per-labeler CSVs)
-│   ├── prepared/          # Prepared train/val splits
-│   └── check_audio/       # Test audio files
-├── checkpoints/           # Saved model weights
+│   ├── audio/               # Audio chunks for training
+│   ├── labels/              # Human labels (per-labeler CSVs)
+│   ├── prepared/            # Prepared train/val splits
+│   └── embeddings/          # Precomputed audio embeddings
 └── requirements.txt
 ```
 

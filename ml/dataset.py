@@ -22,7 +22,7 @@ from typing import Optional, Tuple, Dict
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.head_regressor import SCORE_NAMES, scale_scores
+from ml.head_regressor import SCORE_NAMES, scale_scores
 
 
 class TrumpetDataset(Dataset):

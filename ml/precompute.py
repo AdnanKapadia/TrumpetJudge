@@ -31,8 +31,8 @@ from tqdm import tqdm
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.encoder_panns import PANNsEncoder
-from models.head_regressor import SCORE_NAMES, scale_scores
+from ml.encoder_panns import PANNsEncoder
+from ml.head_regressor import SCORE_NAMES, scale_scores
 
 
 class AudioOnlyDataset(torch.utils.data.Dataset):

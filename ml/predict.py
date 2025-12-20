@@ -5,7 +5,7 @@ Run the trained model on an audio file and get scores for each 20s chunk.
 
 Usage:
     python ml/predict.py --audio path/to/audio.wav
-    python ml/predict.py --audio path/to/audio.wav --checkpoint checkpoints/run_XXXX/best_model.pt
+    python ml/predict.py --audio path/to/audio.wav --checkpoint models/checkpoints/run_XXXX/best_model.pt
 """
 
 import os
@@ -20,8 +20,8 @@ import numpy as np
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.encoder_panns import PANNsEncoder
-from models.head_regressor import RegressionHead, SCORE_NAMES, unscale_scores
+from ml.encoder_panns import PANNsEncoder
+from ml.head_regressor import RegressionHead, SCORE_NAMES, unscale_scores
 
 
 def load_audio(audio_path: str, target_sr: int = 32000) -> np.ndarray:

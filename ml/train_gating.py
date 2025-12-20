@@ -35,7 +35,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.head_regressor import GatingHead  # noqa: E402
+from ml.head_regressor import GatingHead  # noqa: E402
 
 
 class GatingDataset(Dataset):
@@ -385,7 +385,7 @@ def main():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="checkpoints_gating",
+        default="models/checkpoints/gating",
         help="Directory to save gating checkpoints",
     )
     parser.add_argument(

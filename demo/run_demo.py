@@ -36,8 +36,8 @@ import plotly.graph_objects as go
 import time
 import random
 
-from models.encoder_panns import PANNsEncoder
-from models.head_regressor import RegressionHead, SCORE_NAMES, unscale_scores, GatingHead
+from ml.encoder_panns import PANNsEncoder
+from ml.head_regressor import RegressionHead, SCORE_NAMES, unscale_scores, GatingHead
 
 
 # Global model instances (loaded once)
@@ -91,7 +91,7 @@ def load_models(run_name=None, ensemble_path=None, gating_path=None, device_over
             model_msg = f"Ensemble loaded from {ensemble_path} ({head.num_models} models)"
         else:
             # Load single model from checkpoint directory
-            checkpoints_dir = Path(__file__).parent.parent / "checkpoints"
+            checkpoints_dir = Path(__file__).parent.parent / "models" / "checkpoints"
             
             # Determine which run to use
             if run_name is None:
@@ -131,7 +131,7 @@ def load_models(run_name=None, ensemble_path=None, gating_path=None, device_over
         if gating_path:
             gating_file = Path(gating_path)
         else:
-            gating_file = Path(__file__).parent.parent / "checkpoints_gating" / "best_gating.pt"
+            gating_file = Path(__file__).parent.parent / "models" / "checkpoints" / "gating" / "best_gating.pt"
         
         if gating_file.exists():
             try:
@@ -727,16 +727,16 @@ if __name__ == "__main__":
         help="Name of the run to use (e.g., 'run_20251218_052428'). If not specified, uses latest run or TRUMPETJUDGE_RUN env var."
     )
     parser.add_argument(
-        "--ensemble",
+        "    --ensemble",
         type=str,
         default=None,
-        help="Path to an ensemble checkpoint (e.g., 'models_for_use/best_ensemble.pt'). If provided, overrides --run."
+        help="Path to an ensemble checkpoint (e.g., 'models/weights/best_ensemble.pt'). If provided, overrides --run."
     )
     parser.add_argument(
         "--gating",
         type=str,
         default=None,
-        help="Path to gating checkpoint (e.g., 'checkpoints_gating/best_gating.pt'). If not provided, tries default path.",
+        help="Path to gating checkpoint (e.g., 'models/checkpoints/gating/best_gating.pt'). If not provided, tries default path.",
     )
     parser.add_argument(
         "--device",

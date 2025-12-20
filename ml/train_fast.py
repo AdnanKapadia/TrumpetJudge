@@ -59,7 +59,7 @@ import numpy as np
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.head_regressor import RegressionHead, SCORE_NAMES, unscale_scores
+from ml.head_regressor import RegressionHead, SCORE_NAMES, unscale_scores
 
 
 def set_seed(seed: int = 42):
@@ -124,7 +124,7 @@ class LabeledEmbeddingDataset(Dataset):
             labels_csv: Path to CSV with labels (must have 'id' and score columns)
         """
         import pandas as pd
-        from models.head_regressor import SCORE_NAMES, scale_scores
+        from ml.head_regressor import SCORE_NAMES, scale_scores
         
         # Load embeddings
         print(f"Loading embeddings from {embedding_file}...")
@@ -191,7 +191,7 @@ class AugmentedLabeledEmbeddingDataset(Dataset):
             labels_csv: Path to CSV with labels for original samples
         """
         import pandas as pd
-        from models.head_regressor import SCORE_NAMES, scale_scores
+        from ml.head_regressor import SCORE_NAMES, scale_scores
         
         # Load augmented embeddings
         print(f"Loading augmented embeddings from {aug_embeddings_file}...")
@@ -428,7 +428,7 @@ def validate(head, val_loader, criterion, device):
 def train_fast(
     train_files: list,
     val_files: list,
-    output_dir: str = "checkpoints",
+    output_dir: str = "models/checkpoints",
     embedding_dim: int = 2048,
     batch_size: int = 64,
     learning_rate: float = 1e-3,
@@ -628,7 +628,7 @@ def train_from_csv(
     embeddings_file: str,
     train_csv: str,
     val_csv: str,
-    output_dir: str = "checkpoints",
+    output_dir: str = "models/checkpoints",
     embedding_dim: int = 2048,
     batch_size: int = 64,
     learning_rate: float = 1e-3,
@@ -826,7 +826,7 @@ def train_cv(
     embeddings_file: str,
     labels_csv: str,
     n_folds: int = 6,
-    output_dir: str = "checkpoints",
+    output_dir: str = "models/checkpoints",
     embedding_dim: int = 2048,
     batch_size: int = 64,
     learning_rate: float = 1e-3,
@@ -859,7 +859,7 @@ def train_cv(
     """
     import pandas as pd
     from sklearn.model_selection import KFold
-    from models.head_regressor import SCORE_NAMES, scale_scores, RegressionHead
+    from ml.head_regressor import SCORE_NAMES, scale_scores, RegressionHead
     
     # Set seed
     set_seed(seed)
@@ -1115,7 +1115,7 @@ class EnsemblePredictor:
         Load all fold models from a CV run directory.
         
         Args:
-            cv_run_dir: Path to CV run directory (e.g., checkpoints/cv_6fold_xxx)
+            cv_run_dir: Path to CV run directory (e.g., models/checkpoints/cv_6fold_xxx)
             device: Device to run on (defaults to CPU)
         """
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -1241,7 +1241,7 @@ def main():
                         help="Number of folds for CV (default: 6)")
     
     # Common options
-    parser.add_argument("--output_dir", type=str, default="checkpoints",
+    parser.add_argument("--output_dir", type=str, default="models/checkpoints",
                         help="Output directory for checkpoints")
     parser.add_argument("--batch_size", type=int, default=64,
                         help="Batch size (default: 64, can be larger)")

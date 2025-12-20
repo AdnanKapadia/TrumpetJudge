@@ -29,6 +29,7 @@ Thumbs.db
 # Large model files (PANNs encoder weights)
 *.pth
 *.onnx
+*.pt
 
 # Keep checkpoints/ - contains trained regression head (~1MB, needed for demo)
 
@@ -40,6 +41,7 @@ data/audio/
 # Generated data
 data/plots/
 data/sheet_music/
+sweeps/**/*.pt
 # data/prepared/
 
 # Labels (keep structure, ignore actual label files)

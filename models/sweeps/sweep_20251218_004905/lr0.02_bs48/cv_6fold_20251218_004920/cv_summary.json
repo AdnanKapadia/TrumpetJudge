@@ -1,0 +1,66 @@
+{
+  "n_folds": 6,
+  "embeddings_file": "data/embeddings/all_audio.pt",
+  "labels_csv": "data/prepared/all_data.csv",
+  "aug_embeddings": null,
+  "aug_csv": null,
+  "mean_mae": 1.4153258323669435,
+  "std_mae": 0.47848009610463194,
+  "fold_maes": [
+    1.88471577167511,
+    1.6849031925201416,
+    0.6828948497772217,
+    1.563636350631714,
+    0.8328180551528931,
+    1.84298677444458
+  ],
+  "fold_details": [
+    {
+      "fold": 1,
+      "best_epoch": 4,
+      "best_val_mae": 1.88471577167511,
+      "train_samples": 193,
+      "val_samples": 45
+    },
+    {
+      "fold": 2,
+      "best_epoch": 9,
+      "best_val_mae": 1.6849031925201416,
+      "train_samples": 198,
+      "val_samples": 40
+    },
+    {
+      "fold": 3,
+      "best_epoch": 52,
+      "best_val_mae": 0.6828948497772217,
+      "train_samples": 206,
+      "val_samples": 32
+    },
+    {
+      "fold": 4,
+      "best_epoch": 1,
+      "best_val_mae": 1.563636350631714,
+      "train_samples": 205,
+      "val_samples": 33
+    },
+    {
+      "fold": 5,
+      "best_epoch": 11,
+      "best_val_mae": 0.8328180551528931,
+      "train_samples": 196,
+      "val_samples": 42
+    },
+    {
+      "fold": 6,
+      "best_epoch": 5,
+      "best_val_mae": 1.84298677444458,
+      "train_samples": 192,
+      "val_samples": 46
+    }
+  ],
+  "batch_size": 48,
+  "learning_rate": 0.02,
+  "epochs": 100,
+  "patience": 15,
+  "seed": 42
+}

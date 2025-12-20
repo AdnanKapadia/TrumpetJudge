@@ -6,10 +6,10 @@ Typically averages predictions from all K folds of a cross-validation run.
 
 Usage:
     # Load ensemble from best sweep result
-    ensemble = EnsembleModel.from_sweep("sweeps/sweep_20251218_004330")
+    ensemble = EnsembleModel.from_sweep("models/sweeps/sweep_20251218_004330")
     
     # Load ensemble from specific CV run
-    ensemble = EnsembleModel.from_cv_run("sweeps/sweep_20251218_004330/lr0.01_bs32/cv_6fold_20251218_004342")
+    ensemble = EnsembleModel.from_cv_run("models/sweeps/sweep_20251218_004330/lr0.01_bs32/cv_6fold_20251218_004342")
     
     # Predict with ensemble
     scores = ensemble.predict(embeddings)  # Returns averaged predictions
@@ -27,7 +27,7 @@ import torch.nn as nn
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.head_regressor import RegressionHead, SCORE_NAMES, unscale_scores
+from ml.head_regressor import RegressionHead, SCORE_NAMES, unscale_scores
 
 
 class EnsembleModel(nn.Module):
@@ -495,7 +495,7 @@ def infer_audio_ensemble(
     Returns:
         Dict with score names mapping to {"mean": x, "std": y}
     """
-    from models.encoder import PANNsEncoder
+    from ml.encoder_panns import PANNsEncoder
     
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"

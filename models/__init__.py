@@ -1,13 +1,11 @@
 """
-Models package for TrumpetJudge ML pipeline.
+Models directory for TrumpetJudge.
 
-Contains:
-    - PANNsEncoder: Pretrained audio encoder for extracting embeddings
-    - RegressionHead: Small MLP that maps embeddings to 5 scores (1-5 scale)
+Contains saved model artifacts:
+    - checkpoints/: Training checkpoints (run_*, cv_*, gated_run_*, gating/)
+    - sweeps/: Hyperparameter sweep results
+    - weights/: Exported model weights for deployment
+
+Model architecture code has moved to ml/ package.
 """
-
-from .encoder_panns import PANNsEncoder
-from .head_regressor import RegressionHead, SCORE_NAMES, scale_scores, unscale_scores
-
-__all__ = ["PANNsEncoder", "RegressionHead", "SCORE_NAMES", "scale_scores", "unscale_scores"]
 

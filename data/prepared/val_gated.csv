@@ -11,7 +11,7 @@ id,path,overall,intonation,tone,timing,technique,is_valid
 3ced077e_9,data/audio/3ced077e_9.wav,2,2,4,5,3,1
 3f97469c_0,data/audio/3f97469c_0.wav,2,2,2,4,2,1
 4d3a9839_0,data/audio/4d3a9839_0.wav,1,1,1,2,1,1
-56ab2455_1,data/audio/56ab2455_1.wav,1,1,1,1,1,1
+56ab2455_1,data/audio/56ab2455_1.wav,1,1,1,2,1,1
 6a09e010_13,data/audio/6a09e010_13.wav,1,2,3,1,2,1
 6a09e010_14,data/audio/6a09e010_14.wav,3,4,4,2,2,1
 6a09e010_17,data/audio/6a09e010_17.wav,1,2,1,1,1,1
@@ -50,6 +50,8 @@ fa7f4981_3,data/audio/fa7f4981_3.wav,2,2,2,4,3,1
 3ced077e_22,data/audio/3ced077e_22.wav,0,0,0,0,0,0
 7728d41e_24,data/audio/7728d41e_24.wav,0,0,0,0,0,0
 77dbaa3e_7,data/audio/77dbaa3e_7.wav,0,0,0,0,0,0
+ea7a0339_13,data/audio/ea7a0339_13.wav,0,0,0,0,0,0
+7728d41e_7,data/audio/7728d41e_7.wav,0,0,0,0,0,0
 7728d41e_18,data/audio/7728d41e_18.wav,0,0,0,0,0,0
 3ced077e_33,data/audio/3ced077e_33.wav,0,0,0,0,0,0
 7728d41e_11,data/audio/7728d41e_11.wav,0,0,0,0,0,0
@@ -65,3 +67,4 @@ ea7a0339_10,data/audio/ea7a0339_10.wav,0,0,0,0,0,0
 3ced077e_28,data/audio/3ced077e_28.wav,0,0,0,0,0,0
 13db7043_0,data/audio/13db7043_0.wav,0,0,0,0,0,0
 77dbaa3e_22,data/audio/77dbaa3e_22.wav,0,0,0,0,0,0
+ea7a0339_17,data/audio/ea7a0339_17.wav,0,0,0,0,0,0

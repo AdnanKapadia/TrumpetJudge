@@ -838,6 +838,9 @@ def train_cv(
     aug_csv: str = None,
     dropout: float = 0.3,
     weight_decay: float = 0.0,
+    hidden_dim: int = 64,  # Smaller default to prevent overfitting
+    hidden_dim2: int = 16,  # Smaller default to prevent overfitting
+    embedding_noise: float = 0.1,  # Regularization noise
 ):
     """
     K-fold cross-validation on precomputed embeddings.
@@ -996,7 +999,13 @@ def train_cv(
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
         
         # Fresh model for each fold
-        head = RegressionHead(embedding_dim=embedding_dim, dropout=dropout)
+        head = RegressionHead(
+            embedding_dim=embedding_dim,
+            hidden_dim=hidden_dim,
+            hidden_dim2=hidden_dim2,
+            dropout=dropout,
+            embedding_noise=embedding_noise,
+        )
         head = head.to(device)
         
         criterion = nn.HuberLoss(delta=1.0)
@@ -1076,6 +1085,9 @@ def train_cv(
         "learning_rate": learning_rate,
         "dropout": dropout,
         "weight_decay": weight_decay,
+        "hidden_dim": hidden_dim,
+        "hidden_dim2": hidden_dim2,
+        "embedding_noise": embedding_noise,
         "epochs": epochs,
         "patience": patience,
         "seed": seed,
@@ -1088,6 +1100,115 @@ def train_cv(
     print(f"  - fold_*/best_model.pt (each fold's best model)")
     
     return summary
+
+
+class EnsemblePredictor:
+    """
+    Ensemble predictor that averages predictions from multiple fold models.
+    
+    This reduces variance and improves generalization on unseen data.
+    Loads all fold models from a CV run and averages their predictions.
+    """
+    
+    def __init__(self, cv_run_dir: str, device: str = None):
+        """
+        Load all fold models from a CV run directory.
+        
+        Args:
+            cv_run_dir: Path to CV run directory (e.g., checkpoints/cv_6fold_xxx)
+            device: Device to run on (defaults to CPU)
+        """
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.cv_run_dir = Path(cv_run_dir)
+        
+        # Load config to get model hyperparameters
+        summary_path = self.cv_run_dir / "cv_summary.json"
+        if summary_path.exists():
+            with open(summary_path) as f:
+                self.config = json.load(f)
+        else:
+            # Fallback defaults
+            self.config = {
+                "hidden_dim": 64,
+                "hidden_dim2": 16, 
+                "dropout": 0.3,
+                "embedding_noise": 0.1,
+            }
+        
+        # Load all fold models
+        self.models = []
+        fold_dirs = sorted(self.cv_run_dir.glob("fold_*"))
+        
+        for fold_dir in fold_dirs:
+            model_path = fold_dir / "best_model.pt"
+            if model_path.exists():
+                checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
+                
+                # Create model with saved hyperparameters
+                model = RegressionHead(
+                    embedding_dim=2048,
+                    hidden_dim=self.config.get("hidden_dim", 64),
+                    hidden_dim2=self.config.get("hidden_dim2", 16),
+                    dropout=self.config.get("dropout", 0.3),
+                    embedding_noise=0.0,  # No noise at inference
+                )
+                model.load_state_dict(checkpoint["head_state_dict"])
+                model.to(self.device)
+                model.eval()
+                self.models.append(model)
+        
+        print(f"Loaded {len(self.models)} fold models from {cv_run_dir}")
+        
+        if len(self.models) == 0:
+            raise ValueError(f"No fold models found in {cv_run_dir}")
+    
+    @torch.no_grad()
+    def predict(self, embedding: torch.Tensor) -> torch.Tensor:
+        """
+        Predict scores by averaging across all fold models.
+        
+        Args:
+            embedding: Audio embedding tensor of shape (batch, 2048)
+            
+        Returns:
+            Averaged scores in [1, 5] range, shape (batch, 5)
+        """
+        embedding = embedding.to(self.device)
+        
+        all_preds = []
+        for model in self.models:
+            pred = model(embedding)  # [0, 1] range
+            all_preds.append(pred)
+        
+        # Average across models
+        avg_pred = torch.stack(all_preds).mean(dim=0)
+        
+        # Unscale to [1, 5]
+        return unscale_scores(avg_pred)
+    
+    def predict_with_uncertainty(self, embedding: torch.Tensor) -> tuple:
+        """
+        Predict scores with uncertainty estimate (std across models).
+        
+        Args:
+            embedding: Audio embedding tensor of shape (batch, 2048)
+            
+        Returns:
+            Tuple of (mean_scores, std_scores), both in [1, 5] range
+        """
+        embedding = embedding.to(self.device)
+        
+        all_preds = []
+        for model in self.models:
+            pred = model(embedding)  # [0, 1] range
+            pred_unscaled = unscale_scores(pred)  # [1, 5] range
+            all_preds.append(pred_unscaled)
+        
+        stacked = torch.stack(all_preds)  # (n_models, batch, 5)
+        mean_pred = stacked.mean(dim=0)
+        std_pred = stacked.std(dim=0)
+        
+        return mean_pred, std_pred
 
 
 def main():

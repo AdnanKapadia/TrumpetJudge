@@ -10,7 +10,7 @@ Usage:
     python ml/sweep.py --n_trials 50      # More trials
     python ml/sweep.py --n_trials 10      # Quick test
 
-I"""
+"""
 
 import argparse
 import json
@@ -38,15 +38,21 @@ def create_objective(
     """Create an objective function for Optuna."""
     
     def objective(trial: optuna.Trial) -> float:
-        # Sample hyperparameters
+        # Sample hyperparameters - focused on regularization to prevent overfitting
         lr = trial.suggest_float("lr", 1e-4, 5e-2, log=True)
-        batch_size = trial.suggest_categorical("batch_size", [16, 24, 32, 48, 64, 96, 128])
-        dropout = trial.suggest_float("dropout", 0.1, 0.6)
-        weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
+        batch_size = trial.suggest_categorical("batch_size", [16, 32, 64, 128])
+        dropout = trial.suggest_float("dropout", 0.3, 0.7)  # Higher dropout range
+        weight_decay = trial.suggest_float("weight_decay", 1e-4, 1e-1, log=True)  # More aggressive
+        
+        # Architecture hyperparameters - smaller is better for small datasets
+        hidden_dim = trial.suggest_categorical("hidden_dim", [32, 64, 128])
+        hidden_dim2 = trial.suggest_categorical("hidden_dim2", [8, 16, 32])
+        embedding_noise = trial.suggest_float("embedding_noise", 0.0, 0.3)
         
         print(f"\n{'='*60}")
         print(f"Trial {trial.number + 1}")
         print(f"  lr={lr:.6f}, batch={batch_size}, dropout={dropout:.2f}, wd={weight_decay:.6f}")
+        print(f"  hidden=[{hidden_dim}, {hidden_dim2}], noise={embedding_noise:.2f}")
         print("=" * 60)
         
         try:
@@ -60,12 +66,15 @@ def create_objective(
                 learning_rate=lr,
                 dropout=dropout,
                 weight_decay=weight_decay,
+                hidden_dim=hidden_dim,
+                hidden_dim2=hidden_dim2,
+                embedding_noise=embedding_noise,
                 epochs=epochs,
                 patience=patience,
                 aug_embeddings=aug_embeddings,
                 aug_csv=aug_csv,
-                seed = seed,
-                device = device,
+                seed=seed,
+                device=device,
             )
             
             mean_mae = summary["mean_mae"]
@@ -111,11 +120,14 @@ def run_sweep(
     print("=" * 60)
     print("TrumpetJudge Hyperparameter Optimization (Optuna)")
     print("=" * 60)
-    print(f"\nSearch space:")
-    print(f"  lr:           [1e-4, 5e-2] (log scale)")
-    print(f"  batch_size:   [16, 24, 32, 48, 64, 96, 128]")
-    print(f"  dropout:      [0.1, 0.6]")
-    print(f"  weight_decay: [1e-6, 1e-2] (log scale)")
+    print(f"\nSearch space (focused on regularization):")
+    print(f"  lr:              [1e-4, 5e-2] (log scale)")
+    print(f"  batch_size:      [16, 32, 64, 128]")
+    print(f"  dropout:         [0.3, 0.7] (higher for small data)")
+    print(f"  weight_decay:    [1e-4, 1e-1] (log scale, aggressive)")
+    print(f"  hidden_dim:      [32, 64, 128]")
+    print(f"  hidden_dim2:     [8, 16, 32]")
+    print(f"  embedding_noise: [0.0, 0.3]")
     print(f"\nTrials: {n_trials}")
     print(f"Output: {sweep_dir}")
     
@@ -160,14 +172,14 @@ def run_sweep(
     
     # Top 5 trials
     print(f"\n📊 Top 5 trials:")
-    print(f"{'Rank':<5} {'MAE':<10} {'LR':<12} {'Batch':<7} {'Dropout':<9} {'WD':<12}")
-    print("-" * 60)
+    print(f"{'Rank':<5} {'MAE':<8} {'LR':<10} {'BS':<4} {'Drop':<5} {'WD':<10} {'H1':<4} {'H2':<4} {'Noise':<5}")
+    print("-" * 70)
     
     sorted_trials = sorted(study.trials, key=lambda t: t.value if t.value else float("inf"))
     for rank, trial in enumerate(sorted_trials[:5], 1):
         if trial.value is not None:
             p = trial.params
-            print(f"{rank:<5} {trial.value:<10.4f} {p['lr']:<12.6f} {p['batch_size']:<7} {p['dropout']:<9.2f} {p['weight_decay']:<12.6f}")
+            print(f"{rank:<5} {trial.value:<8.4f} {p['lr']:<10.6f} {p['batch_size']:<4} {p['dropout']:<5.2f} {p['weight_decay']:<10.6f} {p['hidden_dim']:<4} {p['hidden_dim2']:<4} {p['embedding_noise']:<5.2f}")
     
     # Save results
     results = {
@@ -218,6 +230,10 @@ def main():
                         help="Max epochs per fold")
     parser.add_argument("--patience", type=int, default=20,
                         help="Early stopping patience")
+    parser.add_argument("--device", type=str, default="cpu",
+                        help="Device (cuda/cpu)")
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Random seed")
     
     args = parser.parse_args()
     
@@ -231,6 +247,8 @@ def main():
         n_trials=args.n_trials,
         epochs=args.epochs,
         patience=args.patience,
+        device=args.device,
+        seed=args.seed,
     )
 
 

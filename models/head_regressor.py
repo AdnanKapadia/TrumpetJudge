@@ -112,13 +112,17 @@ class RegressionHead(nn.Module):
     """
     MLP regression head that maps audio embeddings to performance scores.
     
-    Architecture:
-        Linear(embedding_dim → 256) → ReLU → Dropout
-        Linear(256 → 64) → ReLU → Dropout  
-        Linear(64 → 5) → Sigmoid → scale to [1, 5]
+    Architecture (default - smaller to prevent overfitting on small datasets):
+        Linear(embedding_dim → 64) → ReLU → Dropout
+        Linear(64 → 16) → ReLU → Dropout  
+        Linear(16 → 5) → Sigmoid → scale to [1, 5]
     
     The model predicts in [0, 1] internally and rescales to [1, 5] for output.
     Training targets should be scaled to [0, 1] using scale_scores().
+    
+    Features:
+        - Embedding noise during training for regularization
+        - Small architecture to prevent overfitting on small datasets
     
     Attributes:
         embedding_dim (int): Input embedding dimension (2048 for CNN14)
@@ -128,33 +132,38 @@ class RegressionHead(nn.Module):
     def __init__(
         self,
         embedding_dim: int = 2048,
-        hidden_dim: int = 256,
+        hidden_dim: int = 64,  # Reduced from 256 to prevent overfitting
+        hidden_dim2: int = 16,  # Reduced from 64 to prevent overfitting
         dropout: float = 0.3,
+        embedding_noise: float = 0.1,  # Gaussian noise std during training
     ):
         """
         Initialize the regression head.
         
         Args:
             embedding_dim: Dimension of input embeddings (2048 for PANNs CNN14)
-            hidden_dim: Dimension of first hidden layer
+            hidden_dim: Dimension of first hidden layer (default: 64)
+            hidden_dim2: Dimension of second hidden layer (default: 16)
             dropout: Dropout probability for regularization
+            embedding_noise: Std of Gaussian noise added to embeddings during training
         """
         super().__init__()
         
         self.embedding_dim = embedding_dim
         self.num_scores = len(SCORE_NAMES)
+        self.embedding_noise = embedding_noise
         
-        # MLP layers
+        # MLP layers - smaller to prevent overfitting
         self.network = nn.Sequential(
             nn.Linear(embedding_dim, hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
             
-            nn.Linear(hidden_dim, 64),
+            nn.Linear(hidden_dim, hidden_dim2),
             nn.ReLU(),
             nn.Dropout(dropout),
             
-            nn.Linear(64, self.num_scores),
+            nn.Linear(hidden_dim2, self.num_scores),
             nn.Sigmoid(),  # Output in [0, 1]
         )
         
@@ -172,6 +181,10 @@ class RegressionHead(nn.Module):
         """
         Forward pass: embedding → scores in [0, 1].
         
+        During training, adds Gaussian noise to embeddings for regularization.
+        This helps prevent overfitting on small datasets by making the model
+        robust to small variations in the embedding space.
+        
         Args:
             embedding: Audio embedding tensor of shape (batch, embedding_dim)
             
@@ -179,6 +192,11 @@ class RegressionHead(nn.Module):
             Scores tensor of shape (batch, 5) with values in [0, 1]
             Use unscale_scores() to convert to [1, 5] range.
         """
+        # Add noise during training for regularization
+        if self.training and self.embedding_noise > 0:
+            noise = torch.randn_like(embedding) * self.embedding_noise
+            embedding = embedding + noise
+        
         return self.network(embedding)
     
     def predict(self, embedding: torch.Tensor) -> torch.Tensor:

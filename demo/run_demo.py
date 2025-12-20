@@ -594,6 +594,50 @@ def generate_rejection_reason() -> str:
     return random.choice(reasons)
 
 
+def get_example_audio_files():
+    """Get list of example audio files from data/audio directory."""
+    audio_dir = Path(__file__).parent.parent / "data" / "audio"
+    if not audio_dir.exists():
+        return []
+    
+    # Get all wav files, sorted by name
+    wav_files = sorted(audio_dir.glob("*.wav"))
+    
+    # Return as list of (display_name, path) tuples
+    # Sample a diverse set - take first file from each unique video ID (prefix before _)
+    video_ids_seen = set()
+    examples = []
+    
+    for f in wav_files:
+        # Extract video ID (part before the underscore)
+        parts = f.stem.split("_")
+        if len(parts) >= 2:
+            video_id = parts[0]
+            if video_id not in video_ids_seen:
+                video_ids_seen.add(video_id)
+                examples.append((f.name, str(f)))
+        
+        # Limit to reasonable number of examples
+        if len(examples) >= 20:
+            break
+    
+    return examples
+
+
+def load_example_audio(example_path):
+    """Load an example audio file and return it in Gradio format."""
+    if not example_path or example_path == "":
+        return None
+    
+    try:
+        audio_data, sample_rate = sf.read(example_path)
+        # Convert to format Gradio expects
+        return (sample_rate, audio_data)
+    except Exception as e:
+        print(f"Error loading example: {e}")
+        return None
+
+
 def create_rejection_display(gate_prob: float, reason: str) -> str:
     """HTML block shown when the gating model flags the clip as rejected."""
     prob_pct = gate_prob * 100.0 if gate_prob is not None else 0.0
@@ -637,6 +681,10 @@ with gr.Blocks() as app:
     </div>
     """)
     
+    # Get example files at app build time
+    example_files = get_example_audio_files()
+    example_choices = {name: path for name, path in example_files}
+    
     with gr.Row():
         with gr.Column(scale=1):
             gr.Markdown("### 🎤 Your Performance")
@@ -645,6 +693,16 @@ with gr.Blocks() as app:
                 sources=["upload", "microphone"],
                 type="numpy"
             )
+            
+            # Example audio selector
+            if example_files:
+                gr.Markdown("**Or try an example:**")
+                example_dropdown = gr.Dropdown(
+                    choices=[name for name, _ in example_files],
+                    label="Example Recordings",
+                    value=None,
+                    interactive=True
+                )
             
             analyze_btn = gr.Button(
                 "🎯 Analyze Performance",
@@ -716,6 +774,19 @@ with gr.Blocks() as app:
             status_text
         ]
     )
+    
+    # Handle example selection
+    if example_files:
+        def on_example_select(example_name):
+            if example_name and example_name in example_choices:
+                return load_example_audio(example_choices[example_name])
+            return None
+        
+        example_dropdown.change(
+            fn=on_example_select,
+            inputs=[example_dropdown],
+            outputs=[audio_input]
+        )
 
 
 if __name__ == "__main__":
